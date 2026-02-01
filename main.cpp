@@ -73,7 +73,7 @@ extern "C"
 	bool leftWindowsSuppressed;
 	bool leftShiftSuppressed;
 	//bool f23Suppressed;
-	bool rightControlInjected;
+	bool rightCtrlDown;
 
 	//bool leftCtrlDown, rightCtrlDown, leftAltDown, rightAltDown;
 
@@ -325,7 +325,10 @@ extern "C"
 					CancelTimer();
 					leftShiftSuppressed = false;
 					leftWindowsSuppressed = false;
-					InjectRightControlPress();
+					if (!rightCtrlDown)
+					{
+						InjectRightControlPress();
+					}
 					return 1;  //block key
 				}
 				else
@@ -336,15 +339,10 @@ extern "C"
 		}
 		else if (released)
 		{
-			if (keyCode == VK_LWIN && pressState != STATE::Idle)
+			if (pressState != STATE::Idle)
 			{
 				ReplaySuppressedKeys2();
 			}
-			if (keyCode == VK_LSHIFT && pressState != STATE::Idle)
-			{
-				ReplaySuppressedKeys2();
-			}
-
 			if (keyCode == VK_F23 && releaseState == STATE::F23)
 			{
 				SetReleaseState(STATE::LeftShift);
@@ -365,8 +363,6 @@ extern "C"
 
 		return CallNextHookEx(NULL, code, wParam, lParam);
 	}
-
-	OVERLAPPED globalOverlapped;
 
 	LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 	{
@@ -402,57 +398,57 @@ extern "C"
 			DebugPrintf("%d %s%s%s0x%02X %s\n", GetTickCount(), suppressedMessage, injectedMessage, pressedMessage, keyCode, GetScancodeName(keyCode));
 		}
 #endif
-//		if (result <= 0 && SendSAS != NULL)
-//		{
-//			if (pressed)
-//			{
-//				if (keyCode == VK_LMENU)
-//				{
-//					leftAltDown = true;
-//				}
-//				if (keyCode == VK_RMENU)
-//				{
-//					rightAltDown = true;
-//				}
-//				if (keyCode == VK_LCONTROL)
-//				{
-//					leftCtrlDown = true;
-//				}
-//				if (keyCode == VK_RCONTROL)
-//				{
-//					rightCtrlDown = true;
-//				}
-//				if (keyCode == VK_DELETE)
-//				{
-//					if ((leftAltDown || rightAltDown) && (leftCtrlDown || rightCtrlDown))
-//					{
-//#if DEBUG
-//						DebugPrintf("SendSAS\n");
-//#endif
-//						SendSAS(true);
-//					}
-//				}
-//			}
-//			else
-//			{
-//				if (keyCode == VK_LMENU)
-//				{
-//					leftAltDown = false;
-//				}
-//				if (keyCode == VK_RMENU)
-//				{
-//					rightAltDown = false;
-//				}
-//				if (keyCode == VK_LCONTROL)
-//				{
-//					leftCtrlDown = false;
-//				}
-//				if (keyCode == VK_RCONTROL)
-//				{
-//					rightCtrlDown = false;
-//				}
-//			}
-//		}
+		if (result <= 0)
+		{
+			if (pressed)
+			{
+				//if (keyCode == VK_LMENU)
+				//{
+				//	leftAltDown = true;
+				//}
+				//if (keyCode == VK_RMENU)
+				//{
+				//	rightAltDown = true;
+				//}
+				//if (keyCode == VK_LCONTROL)
+				//{
+				//	leftCtrlDown = true;
+				//}
+				if (keyCode == VK_RCONTROL)
+				{
+					rightCtrlDown = true;
+				}
+				//if (keyCode == VK_DELETE)
+				//{
+				//	if ((leftAltDown || rightAltDown) && (leftCtrlDown || rightCtrlDown))
+				//	{
+				//		#if DEBUG
+				//		DebugPrintf("SendSAS\n");
+				//		#endif
+				//		if (SendSAS != NULL) SendSAS(true);
+				//	}
+				//}
+			}
+			else
+			{
+				//if (keyCode == VK_LMENU)
+				//{
+				//	leftAltDown = false;
+				//}
+				//if (keyCode == VK_RMENU)
+				//{
+				//	rightAltDown = false;
+				//}
+				//if (keyCode == VK_LCONTROL)
+				//{
+				//	leftCtrlDown = false;
+				//}
+				if (keyCode == VK_RCONTROL)
+				{
+					rightCtrlDown = false;
+				}
+			}
+		}
 		return result;
 	}
 
