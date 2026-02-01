@@ -3,6 +3,7 @@ A tiny program that changes the Copilot keyboard key back into the right Ctrl ke
 
 # Why?
 Because Microsoft required manufacturers to replace the right Ctrl key with a Copilot key, with no BIOS or Windows setting available to change it back.
+
 Some people actually do use their keyboards, and need a right Ctrl key.  Things I frequently do with the right Ctrl key include:
  * Ctrl + Left/Right to move the cursor between words
  * Ctrl + Shift + Left/Right to select text one word at a time.
@@ -10,19 +11,21 @@ Some people actually do use their keyboards, and need a right Ctrl key.  Things 
  * Ctrl + L to move to the Location bar in a web browser
  * Ctrl + Home/End to move the cursor to the beginning or end of a document
  * Ctrl + P to print
+ * Ctrl + N for a new browser window
  * Ctrl + +/- and Ctrl + 0 to control zooming in a web browser
  * Ctrl + [ / ] to move between matching braces in a code editor
 
-#How it works
+# How it works
+
 Pressing the Copilot key acts as pressing keys in this order: Left Windows Key, Left Shift, then F23 (a key not normally found on keyboards).
+
 Releasing the Copilot key is a release of F23, Left Shift, then Left Windows Key in that order.
 
 The function `SetWindowsHookEx` allows a program to install a low-level keyboard hook.  This allows a program to accept or reject key presses for the whole system.
+
 In addition to a keyboard hook accepting or rejecting key presses, the function `SendInput` can synthesize keys being pressed and released.
 
----
-
-##Detecting the three-key sequence vs someone using the normal keys:
+## Detecting the three-key sequence vs someone using the normal keys:
 
 The program uses simple rules to detect the Copilot key vs. normal use of the Left Windows and Left Shift keys.
 
@@ -51,6 +54,7 @@ Then when you release the Copilot key:
  * After Left Shift key is released, the next key release of Left Windows Key is blocked (not your real Left Windows key)
  * After Left Windows key is released, it's done handling the complete keystroke.
 
-#Usage
+# Usage
 There's no installer yet.  You can add a shortcut to the Startup directory of the Start Menu, but this is tricky to do under Windows 11.
+
 When you run the program, you won't see anything happen, but it is changing the Copilot key into the right ctrl key.  To close the program, use Task Manager to end NoCopilotKey.
