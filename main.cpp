@@ -276,7 +276,7 @@ extern "C"
 		//cooperate with other programs which use low level keyboard hooks
 		if (code < 0)
 		{
-			return CallNextHookEx(NULL, code, wParam, lParam);
+			return code;
 		}
 
 		int keyCode;
@@ -361,7 +361,7 @@ extern "C"
 			}
 		}
 
-		return CallNextHookEx(NULL, code, wParam, lParam);
+		return 0;
 	}
 
 	LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
@@ -377,6 +377,11 @@ extern "C"
 		bool handled = false;
 
 		LRESULT result = MyKeyboardProc2(code, wParam, lParam);
+		if (result < 0)
+		{
+			return CallNextHookEx(NULL, code, wParam, lParam);
+		}
+
 #if DEBUG
 		if (keyCode > 0)
 		{
@@ -448,6 +453,10 @@ extern "C"
 					rightCtrlDown = false;
 				}
 			}
+		}
+		if (result <= 0)
+		{
+			return CallNextHookEx(NULL, code, wParam, lParam);
 		}
 		return result;
 	}
