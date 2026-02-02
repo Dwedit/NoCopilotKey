@@ -2,7 +2,7 @@
 A tiny program that changes the Copilot keyboard key back into the right Ctrl key.
 
 # Usage
-Download the release from the [Releases page](releases/).
+Download the release from the [Releases page](https://github.com/Dwedit/NoCopilotKey/releases/latest).
 
 Extract all files from the ZIP to the directory you want to keep the program in.
 
@@ -65,11 +65,11 @@ Then when you release the Copilot key:
 
 # Version History
 
-* 1.0.0.3
+1.0.0.3
  * Added feature to create Startup entry (This is hard to do yourself on Windows 11)
  * Fixed Game Bar appearing if you tapped and released Left Windows Key then pressed G at any time afterwards
  * Code cleanup and changing code for running other hooks
-* 1.0.0.2
+1.0.0.2
  * Changed code for running other hooks
-* 1.0.0.1
+1.0.0.1
  * Initial Release
