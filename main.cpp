@@ -130,18 +130,17 @@ extern "C"
 	int APIENTRY MyWinMain()
 	{
 		bool installationOkay = false;
-		HANDLE mutex = OpenMutexA(SYNCHRONIZE, false, "Mutex for NoCopilotKey");
-		if (mutex == NULL)
-		{
-			mutex = CreateMutexA(NULL, true, "Mutex for NoCopilotKey");
-		}
-		else
-		{
-			return -1;
-		}
 
 		commandLine = GetCommandLineW();
+		#if DEBUG
+		wprintf(L"Command Line: %s\n", commandLine);
+		#endif
+
 		argv = CommandLineToArgvW(commandLine, &argc);
+		#if DEBUG
+		wprintf(L"argv[0]: %s\n", argv[0]);
+		#endif
+
 		if (argc >= 2 && 0 == wcscmp(argv[1], L"--install"))
 		{
 			installationOkay = Install();
@@ -151,6 +150,22 @@ extern "C"
 				return -1;
 			}
 		}
+
+		HANDLE mutex = OpenMutexA(SYNCHRONIZE, false, "Mutex for NoCopilotKey");
+		if (mutex == NULL)
+		{
+			mutex = CreateMutexA(NULL, true, "Mutex for NoCopilotKey");
+		}
+		else
+		{
+			//second instance running, display message box then quit if it was installed
+			if (installationOkay)
+			{
+				MessageBoxA(NULL, "Installation Succeeded", "NoCopilotKey", MB_ICONINFORMATION);
+			}
+			return -1;
+		}
+
 		//sasModule = LoadLibraryA("sas.dll");
 		//if (sasModule != NULL)
 		//{
@@ -767,6 +782,53 @@ extern "C"
 		result[len1 + len2] = 0;
 		return result;
 	}
+	
+	//PWSTR SubstrAlloc(LPCWSTR str1, int startIndex, int length)
+	//{
+	//	int len1 = 0;
+	//	if (str1 != NULL)
+	//	{
+	//		len1 = wcslen(str1);
+	//	}
+	//	if (startIndex < 0)
+	//	{
+	//		length += startIndex;
+	//		startIndex = 0;
+	//	}
+	//	if (length < 0)
+	//	{
+	//		length = 0;
+	//	}
+	//	if (startIndex + length > len1)
+	//	{
+	//		length = len1 - startIndex;
+	//	}
+	//	if (length < 0)
+	//	{
+	//		length = 0;
+	//	}
+	//	size_t bytesToAllocate = (length + 1) * sizeof(WCHAR);
+	//	PWSTR result = (PWSTR)HeapAlloc(GetProcessHeap(), 0, bytesToAllocate);
+	//	if (length > 0)
+	//	{
+	//		memcpy(result, str1 + startIndex, length * sizeof(WCHAR));
+	//	}
+	//	result[length] = 0;
+	//	return result;
+	//}
+
+	PWSTR GetFullPathNameAlloc(LPCWSTR inputPath)
+	{
+		PWSTR fullPath = (PWSTR)HeapAlloc(GetProcessHeap(), 0, MAX_PATH * sizeof(WCHAR));
+		DWORD fullPathLength = GetFullPathNameW(inputPath, MAX_PATH, fullPath, NULL);
+		if (fullPathLength >= MAX_PATH)
+		{
+			HeapFree(GetProcessHeap(), 0, fullPath);
+			fullPath = (PWSTR)HeapAlloc(GetProcessHeap(), 0, (fullPathLength + 1) * sizeof(WCHAR));
+			fullPathLength = GetFullPathNameW(inputPath, fullPathLength + 1, fullPath, NULL);
+		}
+		return fullPath;
+	}
 
 	bool Install()
 	{
@@ -777,13 +839,15 @@ extern "C"
 		IPersistFile* persistFile = NULL;
 		//LPWSTR commandLine = GetCommandLineW();
 		//LPWSTR* argv = CommandLineToArgvW(commandLine, &argc);
+		PWSTR fullExePath = NULL;
 		PWSTR startupFolderPath = NULL;
 		PWSTR combinedPath = NULL;
 
 		result = CoInitialize(NULL);
 		result = CoCreateInstance(CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, IID_IShellLinkW, (LPVOID*)&shellLink);
 		if (FAILED(result) || shellLink == NULL) goto cleanup;
-		result = shellLink->SetPath(argv[0]);
+		fullExePath = GetFullPathNameAlloc(argv[0]);
+		result = shellLink->SetPath(fullExePath);
 		if (FAILED(result)) goto cleanup;
 		result = shellLink->QueryInterface(IID_IPersistFile, (LPVOID*)&persistFile);
 		if (FAILED(result) || persistFile == NULL) goto cleanup;
@@ -799,6 +863,7 @@ extern "C"
 		//if (argv != NULL) { LocalFree(argv); argv = NULL; }
 		if (startupFolderPath != NULL) { CoTaskMemFree(startupFolderPath); startupFolderPath = NULL; }
 		if (combinedPath != NULL) { HeapFree(GetProcessHeap(), 0, combinedPath); combinedPath = NULL; }
+		if (fullExePath != NULL) { HeapFree(GetProcessHeap(), 0, fullExePath); fullExePath = NULL; }
 		return okay;
 	}
 }
