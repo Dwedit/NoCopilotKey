@@ -1,6 +1,15 @@
 # NoCopilotKey
 A tiny program that changes the Copilot keyboard key back into the right Ctrl key.
 
+# Usage
+Download the release from the [Releases page](/releases/).
+
+Extract all files from the ZIP to the directory you want to keep the program in.
+
+Run "Install NoCopilotKey.bat" to create a Start Menu entry for Startup, this will make the program automatically run.
+
+When you run the program, you won't see anything happen, but it is automatically changing the Copilot key into the right ctrl key.  To close the program, use Task Manager to end NoCopilotKey.
+
 # Why?
 Because Microsoft required manufacturers to replace the right Ctrl key with a Copilot key, with no BIOS or Windows setting available to change it back.
 
@@ -54,7 +63,13 @@ Then when you release the Copilot key:
  * After Left Shift key is released, the next key release of Left Windows Key is blocked (not your real Left Windows key)
  * After Left Windows key is released, it's done handling the complete keystroke.
 
-# Usage
-There's no installer yet.  You can add a shortcut to the Startup directory of the Start Menu, but this is tricky to do under Windows 11.
+# Version History
 
-When you run the program, you won't see anything happen, but it is changing the Copilot key into the right ctrl key.  To close the program, use Task Manager to end NoCopilotKey.
+* 1.0.0.3
+ * Added feature to create Startup entry (This is hard to do yourself on Windows 11)
+ * Fixed Game Bar appearing if you tapped and released Left Windows Key then pressed G at any time afterwards
+ * Code cleanup and changing code for running other hooks
+* 1.0.0.2
+ * Changed code for running other hooks
+* 1.0.0.1
+ * Initial Release

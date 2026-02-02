@@ -3,6 +3,7 @@
 #include <stdint.h>
 typedef uint32_t u32;
 #include <windows.h>
+#include <shellapi.h>
 #include <io.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -69,6 +70,9 @@ extern "C"
 	};
 	STATE pressState;
 	STATE releaseState;
+	LPWSTR commandLine;
+	int argc;
+	PWSTR* argv;
 
 	bool leftWindowsSuppressed;
 	bool leftShiftSuppressed;
@@ -82,11 +86,12 @@ extern "C"
 	int APIENTRY MyWinMain();
 
 	LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam);
-	void DebugPrintf(const char* format, ...);
+	bool Install();
 
 #if DEBUG
 	const char* GetScancodeName(int key);
 	void RegisterScanCodes();
+	void DebugPrintf(const char* format, ...);
 
 	int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 	{
@@ -124,12 +129,7 @@ extern "C"
 	//extern void TimerProc(MSG& msg);
 	int APIENTRY MyWinMain()
 	{
-		//sasModule = LoadLibraryA("sas.dll");
-		//if (sasModule != NULL)
-		//{
-		//	SendSAS = (SendSAS_Func)GetProcAddress(sasModule, "SendSAS");
-		//}
-
+		bool installationOkay = false;
 		HANDLE mutex = OpenMutexA(SYNCHRONIZE, false, "Mutex for NoCopilotKey");
 		if (mutex == NULL)
 		{
@@ -139,12 +139,35 @@ extern "C"
 		{
 			return -1;
 		}
+
+		commandLine = GetCommandLineW();
+		argv = CommandLineToArgvW(commandLine, &argc);
+		if (argc >= 2 && 0 == wcscmp(argv[1], L"--install"))
+		{
+			installationOkay = Install();
+			if (!installationOkay)
+			{
+				MessageBoxA(NULL, "Installation Failed", "NoCopilotKey", MB_ICONSTOP);
+				return -1;
+			}
+		}
+		//sasModule = LoadLibraryA("sas.dll");
+		//if (sasModule != NULL)
+		//{
+		//	SendSAS = (SendSAS_Func)GetProcAddress(sasModule, "SendSAS");
+		//}
+
 		HMODULE module = GetModuleHandleW(NULL);
 
 		HHOOK hook = SetWindowsHookExW(WH_KEYBOARD_LL, &MyKeyboardProc, module, 0);
 		int lastError = GetLastError();
 
 		mainWindow = CreateWindowExW(0, L"STATIC", L"NoCopilotKey", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, NULL, NULL);
+
+		if (installationOkay)
+		{
+			MessageBoxA(NULL, "Installation Succeeded", "NoCopilotKey", MB_ICONINFORMATION);
+		}
 
 		MSG msg;
 		while (GetMessage(&msg, NULL, 0, 0) > 0)
@@ -155,20 +178,19 @@ extern "C"
 		return msg.wParam;
 	}
 
-	UINT_PTR activeTimer = 0;
 	void SetPressState(STATE state)
 	{
-#if DEBUG
+		#if DEBUG
 		DebugPrintf("Press State Transition: %d -> %d\n", pressState, state);
-#endif
+		#endif
 		pressState = state;
 	}
 
 	void SetReleaseState(STATE state)
 	{
-#if DEBUG
+		#if DEBUG
 		DebugPrintf("Release State Transition: %d -> %d\n", releaseState, state);
-#endif
+		#endif
 		releaseState = state;
 	}
 
@@ -176,13 +198,14 @@ extern "C"
 
 	void CALLBACK TimerProc(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 	{
-#if DEBUG
+		#if DEBUG
 		DebugPrintf("In TimerProc because it took too long to see all three keys\n");
-#endif
+		#endif
 		CancelTimer();
 		ReplaySuppressedKeys();
 	}
 
+	UINT_PTR activeTimer = 0;
 	void EnsureTimer()
 	{
 		if (activeTimer == 0)
@@ -196,70 +219,56 @@ extern "C"
 		{
 			KillTimer(mainWindow, activeTimer);
 			activeTimer = 0;
-#if DEBUG
+			#if DEBUG
 			DebugPrintf("Timer cancelled\n");
-#endif	
+			#endif	
 		}
 	}
 
-	void InjectRightControlPress()
+	void SetKeyDown(INPUT* input, DWORD VKEY)
 	{
-		INPUT inputArr[1];
-		inputArr[0].type = INPUT_KEYBOARD;
-		inputArr[0].ki.wVk = VK_RCONTROL;
-		inputArr[0].ki.wScan = 0;
-		inputArr[0].ki.dwFlags = 0;
-		inputArr[0].ki.time = 0;
-		inputArr[0].ki.dwExtraInfo = 0;
-
-		SendInput(1, &inputArr[0], sizeof(INPUT));
-	}
-	void InjectRightControlRelease()
-	{
-		INPUT inputArr[1];
-		inputArr[0].type = INPUT_KEYBOARD;
-		inputArr[0].ki.wVk = VK_RCONTROL;
-		inputArr[0].ki.wScan = 0;
-		inputArr[0].ki.dwFlags = KEYEVENTF_KEYUP;
-		inputArr[0].ki.time = 0;
-		inputArr[0].ki.dwExtraInfo = 0;
-
-		SendInput(1, &inputArr[0], sizeof(INPUT));
+		input->type = INPUT_KEYBOARD;
+		input->ki.wVk = VKEY;
+		input->ki.wScan = 0;
+		input->ki.dwFlags = 0;
+		input->ki.time = 0;
+		input->ki.dwExtraInfo = 0;
 	}
 
+	void SetKeyUp(INPUT* input, DWORD VKEY)
+	{
+		SetKeyDown(input, VKEY);
+		input->ki.dwFlags = KEYEVENTF_KEYUP;
+	}
+
+	void InjectKeyUp(DWORD VKEY)
+	{
+		INPUT input;
+		SetKeyUp(&input, VKEY);
+		SendInput(1, &input, sizeof(INPUT));
+	}
+
+	void InjectKeyDown(DWORD VKEY)
+	{
+		INPUT input;
+		SetKeyDown(&input, VKEY);
+		SendInput(1, &input, sizeof(INPUT));
+	}
 
 	void ReplaySuppressedKeys()
 	{
-		INPUT inputArr[2];
-		int count = 0;
 		if (leftWindowsSuppressed)
 		{
 			leftWindowsSuppressed = false;
-			inputArr[count].type = INPUT_KEYBOARD;
-			inputArr[count].ki.wVk = VK_LWIN;
-			inputArr[count].ki.wScan = 0;
-			inputArr[count].ki.dwFlags = 0;
-			inputArr[count].ki.time = 0;
-			inputArr[count].ki.dwExtraInfo = 0;
-			count++;
+			InjectKeyDown(VK_LWIN);
 		}
 		if (leftShiftSuppressed)
 		{
 			leftShiftSuppressed = false;
-			inputArr[count].type = INPUT_KEYBOARD;
-			inputArr[count].ki.wVk = VK_LSHIFT;
-			inputArr[count].ki.wScan = 0;
-			inputArr[count].ki.dwFlags = 0;
-			inputArr[count].ki.time = 0;
-			inputArr[count].ki.dwExtraInfo = 0;
-			count++;
-		}
-		if (count > 0)
-		{
-			SendInput(count, &inputArr[0], sizeof(INPUT));
-			SetPressState(STATE::Idle);
+			InjectKeyDown(VK_LSHIFT);
 		}
 	}
+
 	void ReplaySuppressedKeys2()
 	{
 		if (leftWindowsSuppressed || leftShiftSuppressed)
@@ -269,6 +278,9 @@ extern "C"
 		CancelTimer();
 	}
 
+
+
+
 	bool lastWasRepeated = false;
 
 	LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
@@ -276,7 +288,7 @@ extern "C"
 		//cooperate with other programs which use low level keyboard hooks
 		if (code < 0)
 		{
-			return code;
+			return CallNextHookEx(NULL, code, wParam, lParam);
 		}
 
 		int keyCode;
@@ -290,7 +302,12 @@ extern "C"
 
 		if (injected)
 		{
-			return 0;
+			//if (keyCode == VK_LWIN && hideWindowsKeyFromOtherHooks)
+			//{
+			//	code = -1;
+			//	hideWindowsKeyFromOtherHooks = false;
+			//}
+			return CallNextHookEx(NULL, code, wParam, lParam);
 		}
 		if (pressed)
 		{
@@ -300,7 +317,7 @@ extern "C"
 				leftWindowsSuppressed = true;
 				SetPressState(STATE::LeftWindows);
 				EnsureTimer();
-				return 1;  //block key
+				return -1;  //block key
 			}
 
 			if (pressState == STATE::LeftWindows)
@@ -309,7 +326,7 @@ extern "C"
 				{
 					leftShiftSuppressed = true;
 					SetPressState(STATE::LeftShift);
-					return 1;  //block key
+					return -1;  //block key
 				}
 				else
 				{
@@ -327,9 +344,9 @@ extern "C"
 					leftWindowsSuppressed = false;
 					if (!rightCtrlDown)
 					{
-						InjectRightControlPress();
+						InjectKeyDown(VK_RCONTROL);
 					}
-					return 1;  //block key
+					return -1;  //block key
 				}
 				else
 				{
@@ -341,27 +358,41 @@ extern "C"
 		{
 			if (pressState != STATE::Idle)
 			{
+				bool leftWindowsWasSuppressed = leftWindowsSuppressed;
+				bool leftShiftWasSuppressed = leftShiftSuppressed;
 				ReplaySuppressedKeys2();
+				//Game Bar is weird, you need to inject a key up event and suppress the real key up
+				//otherwise Game Bar sees the injected Key Down after the real Key Up.
+				if (leftWindowsWasSuppressed && keyCode == VK_LWIN)
+				{
+					InjectKeyUp(VK_LWIN);
+					return -1;
+				}
+				if (leftShiftWasSuppressed && keyCode == VK_LSHIFT)
+				{
+					InjectKeyUp(VK_LSHIFT);
+					return -1;
+				}
 			}
 			if (keyCode == VK_F23 && releaseState == STATE::F23)
 			{
 				SetReleaseState(STATE::LeftShift);
-				InjectRightControlRelease();
-				return 1;  //block key
+				InjectKeyUp(VK_RCONTROL);
+				return -1;  //block key
 			}
 			if (keyCode == VK_LSHIFT && releaseState == STATE::LeftShift)
 			{
 				SetReleaseState(STATE::LeftWindows);
-				return 1;  //block key
+				return -1;  //block key
 			}
 			if (keyCode == VK_LWIN && releaseState == STATE::LeftWindows)
 			{
 				SetReleaseState(STATE::Idle);
-				return 1;  //block key
+				return -1;  //block key
 			}
 		}
 
-		return 0;
+		return CallNextHookEx(NULL, code, wParam, lParam);
 	}
 
 	LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
@@ -377,16 +408,11 @@ extern "C"
 		bool handled = false;
 
 		LRESULT result = MyKeyboardProc2(code, wParam, lParam);
-		if (result < 0)
-		{
-			return CallNextHookEx(NULL, code, wParam, lParam);
-		}
-
 #if DEBUG
 		if (keyCode > 0)
 		{
 			const char* suppressedMessage = "";
-			if (result > 0)
+			if (result != 0)
 			{
 				suppressedMessage = "SUPPRESSED ";
 			}
@@ -403,7 +429,7 @@ extern "C"
 			DebugPrintf("%d %s%s%s0x%02X %s\n", GetTickCount(), suppressedMessage, injectedMessage, pressedMessage, keyCode, GetScancodeName(keyCode));
 		}
 #endif
-		if (result <= 0)
+		if (result == 0)
 		{
 			if (pressed)
 			{
@@ -453,10 +479,6 @@ extern "C"
 					rightCtrlDown = false;
 				}
 			}
-		}
-		if (result <= 0)
-		{
-			return CallNextHookEx(NULL, code, wParam, lParam);
 		}
 		return result;
 	}
@@ -714,4 +736,69 @@ extern "C"
 	}
 
 #endif
+
+#include <objbase.h>
+#include <shobjidl.h>
+#include <shlguid.h>
+#include <shlobj_core.h>
+
+	PWSTR StrCatAlloc(LPCWSTR str1, LPCWSTR str2)
+	{
+		size_t len1 = 0, len2 = 0;
+		if (str1 != NULL)
+		{
+			len1 = wcslen(str1);
+		}
+		if (str2 != NULL)
+		{
+			len2 = wcslen(str2);
+		}
+		size_t bytesToAllocate = (len1 + len2 + 1) * sizeof(WCHAR);
+		PWSTR result = (PWSTR)HeapAlloc(GetProcessHeap(), 0, bytesToAllocate);
+		if (result == NULL) return NULL;
+		if (len1 > 0)
+		{
+			memcpy(result, str1, len1 * sizeof(WCHAR));
+		}
+		if (len2 > 0)
+		{
+			memcpy(result + len1, str2, len2 * sizeof(WCHAR));
+		}
+		result[len1 + len2] = 0;
+		return result;
+	}
+
+	bool Install()
+	{
+		bool okay = false;
+		int argc = 0;
+		HRESULT result;
+		IShellLinkW* shellLink = NULL;
+		IPersistFile* persistFile = NULL;
+		//LPWSTR commandLine = GetCommandLineW();
+		//LPWSTR* argv = CommandLineToArgvW(commandLine, &argc);
+		PWSTR startupFolderPath = NULL;
+		PWSTR combinedPath = NULL;
+
+		result = CoInitialize(NULL);
+		result = CoCreateInstance(CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, IID_IShellLinkW, (LPVOID*)&shellLink);
+		if (FAILED(result) || shellLink == NULL) goto cleanup;
+		result = shellLink->SetPath(argv[0]);
+		if (FAILED(result)) goto cleanup;
+		result = shellLink->QueryInterface(IID_IPersistFile, (LPVOID*)&persistFile);
+		if (FAILED(result) || persistFile == NULL) goto cleanup;
+		result = SHGetKnownFolderPath(FOLDERID_Startup, KF_FLAG_CREATE, NULL, &startupFolderPath);
+		if (FAILED(result) || startupFolderPath == NULL) goto cleanup;
+		combinedPath = StrCatAlloc(startupFolderPath, L"\\NoCopilotKey.lnk");
+		result = persistFile->Save(combinedPath, false);
+		if (FAILED(result)) goto cleanup;
+		okay = true;
+	cleanup:
+		if (shellLink != NULL) { shellLink->Release(); shellLink = NULL; }
+		if (persistFile != NULL) { persistFile->Release(); persistFile = NULL; }
+		//if (argv != NULL) { LocalFree(argv); argv = NULL; }
+		if (startupFolderPath != NULL) { CoTaskMemFree(startupFolderPath); startupFolderPath = NULL; }
+		if (combinedPath != NULL) { HeapFree(GetProcessHeap(), 0, combinedPath); combinedPath = NULL; }
+		return okay;
+	}
 }
