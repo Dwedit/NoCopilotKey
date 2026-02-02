@@ -44,12 +44,14 @@ When you press Left Windows Key:
    * Releasing any key
    * Pressing any key that's not Left Shift
    * 0.1 seconds elapses
+
 If Left Shift becomes pressed after Left Windows Key:
  * Left Shift Keystroke is blocked
  * If any of these happens, your keystrokes to Left Windows Key and Left Shift are replayed:
    * Releasing any key
    * Pressing any key that's not F23
    * 0.1 seconds elapses since Left Windows Key was pressed
+
 If F23 becomes pressed after Left Windows and Left Shift:
  * Keystroke is blocked
  * Right Ctrl becomes pressed (via `SendInput`) unless Right Ctrl is already held down.
