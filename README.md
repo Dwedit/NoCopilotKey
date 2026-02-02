@@ -2,7 +2,7 @@
 A tiny program that changes the Copilot keyboard key back into the right Ctrl key.
 
 # Usage
-Download the release from the [Releases page](/releases/).
+Download the release from the [Releases page](releases/).
 
 Extract all files from the ZIP to the directory you want to keep the program in.
 
