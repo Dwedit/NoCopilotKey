@@ -55,9 +55,9 @@ DWORD WINAPI SecondaryThreadMain(void* unused)
 
 extern "C"
 {
-	//HMODULE sasModule;
-	//typedef VOID (WINAPI *SendSAS_Func)(BOOL);
-	//SendSAS_Func SendSAS;
+	HMODULE sasModule;
+	typedef VOID (WINAPI *SendSAS_Func)(BOOL);
+	SendSAS_Func SendSAS;
 	
 	void ReplaySuppressedKeys();
 	
@@ -79,14 +79,13 @@ extern "C"
 	//bool f23Suppressed;
 	bool rightCtrlDown;
 
-	//bool leftCtrlDown, rightCtrlDown, leftAltDown, rightAltDown;
+	bool leftCtrlDown, leftAltDown, rightAltDown;
 
 	HWND mainWindow;
 
 	int APIENTRY MyWinMain();
 
 	LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam);
-	bool Install();
 
 #if DEBUG
 	const char* GetScancodeName(int key);
@@ -129,8 +128,6 @@ extern "C"
 	//extern void TimerProc(MSG& msg);
 	int APIENTRY MyWinMain()
 	{
-		bool installationOkay = false;
-
 		commandLine = GetCommandLineW();
 		#if DEBUG
 		wprintf(L"Command Line: %s\n", commandLine);
@@ -148,19 +145,14 @@ extern "C"
 		}
 		else
 		{
-			//second instance running, display message box then quit if it was installed
-			if (installationOkay)
-			{
-				MessageBoxA(NULL, "Installation Succeeded", "NoCopilotKey", MB_ICONINFORMATION);
-			}
 			return -1;
 		}
 
-		//sasModule = LoadLibraryA("sas.dll");
-		//if (sasModule != NULL)
-		//{
-		//	SendSAS = (SendSAS_Func)GetProcAddress(sasModule, "SendSAS");
-		//}
+		sasModule = LoadLibraryA("sas.dll");
+		if (sasModule != NULL)
+		{
+			SendSAS = (SendSAS_Func)GetProcAddress(sasModule, "SendSAS");
+		}
 
 		HMODULE module = GetModuleHandleW(NULL);
 
@@ -168,11 +160,6 @@ extern "C"
 		int lastError = GetLastError();
 
 		mainWindow = CreateWindowExW(0, L"STATIC", L"NoCopilotKey", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, NULL, NULL);
-
-		if (installationOkay)
-		{
-			MessageBoxA(NULL, "Installation Succeeded", "NoCopilotKey", MB_ICONINFORMATION);
-		}
 
 		MSG msg;
 		while (GetMessage(&msg, NULL, 0, 0) > 0)
@@ -316,11 +303,6 @@ extern "C"
 
 		if (injected)
 		{
-			//if (keyCode == VK_LWIN && hideWindowsKeyFromOtherHooks)
-			//{
-			//	code = -1;
-			//	hideWindowsKeyFromOtherHooks = false;
-			//}
 			return CallNextHookEx(NULL, code, wParam, lParam);
 		}
 		if (pressed)
@@ -424,73 +406,75 @@ extern "C"
 		bool pressed = !released;
 		bool handled = false;
 
-		LRESULT result = MyKeyboardProc2(code, wParam, lParam);
-#if DEBUG
+		#if DEBUG
+		DWORD arrivalTime = GetTickCount();
+		const char* injectedMessage = " Real KB ";
+		if (injected)
+		{
+			injectedMessage = "INJECTED ";
+		}
+		const char* pressedMessage = "  PRESS ";
+		if (released)
+		{
+			pressedMessage = "RELEASE ";
+		}
 		if (keyCode > 0)
 		{
-			const char* suppressedMessage = "";
-			if (result != 0)
-			{
-				suppressedMessage = "SUPPRESSED ";
-			}
-			const char* injectedMessage = " Real KB ";
-			if (injected)
-			{
-				injectedMessage = "INJECTED ";
-			}
-			const char* pressedMessage = "  PRESS ";
-			if (released)
-			{
-				pressedMessage = "RELEASE ";
-			}
-			DebugPrintf("%d %s%s%s0x%02X %s\n", GetTickCount(), suppressedMessage, injectedMessage, pressedMessage, keyCode, GetScancodeName(keyCode));
+			DebugPrintf("%d %s%s0x%02X %s\n", arrivalTime, injectedMessage, pressedMessage, keyCode, GetScancodeName(keyCode));
 		}
-#endif
+		#endif
+		LRESULT result = MyKeyboardProc2(code, wParam, lParam);
+		#if DEBUG
+		if (keyCode > 0 && result != 0)
+		{
+			DebugPrintf("%d %s%s0x%02X %s was suppressed\n", arrivalTime, injectedMessage, pressedMessage, keyCode, GetScancodeName(keyCode));
+		}
+		#endif			
 		if (result == 0)
 		{
 			if (pressed)
 			{
-				//if (keyCode == VK_LMENU)
-				//{
-				//	leftAltDown = true;
-				//}
-				//if (keyCode == VK_RMENU)
-				//{
-				//	rightAltDown = true;
-				//}
-				//if (keyCode == VK_LCONTROL)
-				//{
-				//	leftCtrlDown = true;
-				//}
+				if (keyCode == VK_LMENU)
+				{
+					leftAltDown = true;
+				}
+				if (keyCode == VK_RMENU)
+				{
+					rightAltDown = true;
+				}
+				if (keyCode == VK_LCONTROL)
+				{
+					leftCtrlDown = true;
+				}
 				if (keyCode == VK_RCONTROL)
 				{
 					rightCtrlDown = true;
 				}
-				//if (keyCode == VK_DELETE)
-				//{
-				//	if ((leftAltDown || rightAltDown) && (leftCtrlDown || rightCtrlDown))
-				//	{
-				//		#if DEBUG
-				//		DebugPrintf("SendSAS\n");
-				//		#endif
-				//		if (SendSAS != NULL) SendSAS(true);
-				//	}
-				//}
+				if (keyCode == VK_DELETE)
+				{
+					if ((leftAltDown || rightAltDown) && (leftCtrlDown || rightCtrlDown))
+					{
+						#if DEBUG
+						DebugPrintf("SendSAS\n");
+						#endif
+						if (SendSAS != NULL) SendSAS(true);
+					}
+				}
 			}
 			else
 			{
-				//if (keyCode == VK_LMENU)
-				//{
-				//	leftAltDown = false;
-				//}
-				//if (keyCode == VK_RMENU)
-				//{
-				//	rightAltDown = false;
-				//}
-				//if (keyCode == VK_LCONTROL)
-				//{
-				//	leftCtrlDown = false;
-				//}
+				if (keyCode == VK_LMENU)
+				{
+					leftAltDown = false;
+				}
+				if (keyCode == VK_RMENU)
+				{
+					rightAltDown = false;
+				}
+				if (keyCode == VK_LCONTROL)
+				{
+					leftCtrlDown = false;
+				}
 				if (keyCode == VK_RCONTROL)
 				{
 					rightCtrlDown = false;
