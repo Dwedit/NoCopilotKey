@@ -21,6 +21,13 @@ std::mutex debugMutex;
 HANDLE debugEvent;
 std::atomic_bool debugQuit;
 
+DWORD MyGetTickCount()
+{
+	ULONGLONG unbiasedTime;
+	QueryUnbiasedInterruptTime(&unbiasedTime);
+	return unbiasedTime / 10000;
+}
+
 DWORD WINAPI DebugThreadMain(void* unused)
 {
 	while (!debugQuit)
@@ -51,7 +58,6 @@ DWORD WINAPI DebugThreadMain(void* unused)
 }
 
 #endif
-
 
 EXTERN_C_START
 
@@ -197,7 +203,7 @@ void CancelTimer();
 void CALLBACK TimerProc(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 {
 	#if DEBUG
-	DebugPrintf("In TimerProc because it took too long to see all three keys\n");
+	DebugPrintf("%d TimerProc (took too long to see all three keys)\n", MyGetTickCount());
 	#endif
 	CancelTimer();
 	ReplaySuppressedKeys();
@@ -407,7 +413,7 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 	bool handled = false;
 
 	#if DEBUG
-	DWORD arrivalTime = GetTickCount();
+	DWORD arrivalTime = MyGetTickCount();
 	const char* injectedMessage = " Real KB ";
 	if (injected)
 	{
