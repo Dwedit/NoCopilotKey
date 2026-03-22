@@ -21,7 +21,7 @@ std::mutex debugMutex;
 HANDLE debugEvent;
 std::atomic_bool debugQuit;
 
-DWORD WINAPI SecondaryThreadMain(void* unused)
+DWORD WINAPI DebugThreadMain(void* unused)
 {
 	while (!debugQuit)
 	{
@@ -100,7 +100,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), ENABLE_EXTENDED_FLAGS);
 	RegisterVKeyCodes();
 	debugEvent = CreateEvent(NULL, false, false, NULL);
-	HANDLE hThread = CreateThread(NULL, 0, SecondaryThreadMain, 0, NULL, NULL);
+	HANDLE hThread = CreateThread(NULL, 0, DebugThreadMain, 0, NULL, NULL);
 	int exitCode = MyWinMain();
 	ExitProcess(exitCode);
 }
