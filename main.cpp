@@ -221,7 +221,7 @@ DWORD WINAPI SecondaryThreadMain(void* unused)
 			{
 				keyDownString = "Released";
 			}
-			DebugPrintf("%d Secondary Thread: SendInput %s %s\n", tickCount, GetVKeyName(input.ki.wVk), keyDownString);
+			DebugPrintf("    %d Secondary Thread: SendInput %s %s\n", tickCount, GetVKeyName(input.ki.wVk), keyDownString);
 		}
 		#endif
 		SendInput(1, &input, sizeof(input));
@@ -233,14 +233,13 @@ void SecondaryThreadCreate()
 {
 	InitializeConditionVariable(&secondaryThreadConditionVariable);
 	InitializeCriticalSection(&secondaryThreadCriticalSection);
-	new (&keyQueue) MyQueue<USHORT, 256>();
 	HANDLE hThread = CreateThread(NULL, 0, SecondaryThreadMain, 0, NULL, NULL);
 }
 
 void InjectKeyDownAsync(int key)
 {
 	#if DEBUG
-	DebugPrintf("%d InjectKeyDownAsync %s\n", MyGetTickCount(), GetVKeyName(key));
+	DebugPrintf("    %d InjectKeyDownAsync %s\n", MyGetTickCount(), GetVKeyName(key));
 	#endif
 	EnterCriticalSection(&secondaryThreadCriticalSection);
 	bool wasEmpty = keyQueue.empty();
@@ -254,7 +253,7 @@ void InjectKeyDownAsync(int key)
 void InjectKeyUpAsync(int key)
 {
 	#if DEBUG
-	DebugPrintf("%d InjectKeyUpAsync %s\n", MyGetTickCount(), GetVKeyName(key));
+	DebugPrintf("    %d InjectKeyUpAsync %s\n", MyGetTickCount(), GetVKeyName(key));
 	#endif
 	EnterCriticalSection(&secondaryThreadCriticalSection);
 	bool wasEmpty = keyQueue.empty();
@@ -325,7 +324,7 @@ void SetPressState(STATE state)
 	#if DEBUG
 	if (pressState != state)
 	{
-		DebugPrintf("Press State Transition: %d -> %d\n", pressState, state);
+		DebugPrintf("    Press State Transition: %d -> %d\n", pressState, state);
 	}
 	#endif
 	pressState = state;
@@ -336,7 +335,7 @@ void SetReleaseState(STATE state)
 	#if DEBUG
 	if (releaseState != state)
 	{
-		DebugPrintf("Release State Transition: %d -> %d\n", releaseState, state);
+		DebugPrintf("    Release State Transition: %d -> %d\n", releaseState, state);
 	}
 	#endif
 	releaseState = state;
@@ -347,7 +346,7 @@ void CancelTimer();
 void CALLBACK TimerProc(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 {
 	#if DEBUG
-	DebugPrintf("%d TimerProc (took too long to see all three keys)\n", MyGetTickCount());
+	DebugPrintf("    %d TimerProc (took too long to see all three keys)\n", MyGetTickCount());
 	#endif
 	CancelTimer();
 	ReplaySuppressedKeys();
@@ -360,7 +359,7 @@ void EnsureTimer()
 	{
 		activeTimer = SetTimer(mainWindow, 1, 20, TimerProc);
 		#if DEBUG
-		DebugPrintf("Timer set\n");
+		DebugPrintf("    Timer set\n");
 		#endif	
 	}
 }
@@ -371,7 +370,7 @@ void CancelTimer()
 		KillTimer(mainWindow, activeTimer);
 		activeTimer = 0;
 		#if DEBUG
-		DebugPrintf("Timer cancelled\n");
+		DebugPrintf("    Timer cancelled\n");
 		#endif	
 	}
 }
@@ -455,6 +454,10 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 	{
 		return CallNextHookEx(NULL, code, wParam, lParam);
 	}
+
+	//DELETME: Do Nothing
+	//return CallNextHookEx(NULL, code, wParam, lParam);
+
 	if (pressed)
 	{
 		if (keyCode == VK_LWIN)
@@ -577,7 +580,7 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 	#if DEBUG
 	if (keyCode > 0 && result != 0)
 	{
-		DebugPrintf("%d %s%s0x%02X %s was suppressed\n", arrivalTime, injectedMessage, pressedMessage, keyCode, GetVKeyName(keyCode));
+		DebugPrintf("  %d %s%s0x%02X %s was suppressed\n", arrivalTime, injectedMessage, pressedMessage, keyCode, GetVKeyName(keyCode));
 	}
 	#endif			
 	if (result == 0)
@@ -605,7 +608,7 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 				if ((leftAltDown || rightAltDown) && (leftCtrlDown || rightCtrlDown))
 				{
 					#if DEBUG
-					DebugPrintf("SendSAS\n");
+					DebugPrintf("Sending Ctrl+Alt+Del (SendSAS)\n");
 					#endif
 					if (SendSAS != NULL) SendSAS(true);
 				}
