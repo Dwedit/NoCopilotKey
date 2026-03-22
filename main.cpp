@@ -64,9 +64,9 @@ EXTERN_C_START
 HMODULE sasModule;
 typedef VOID (WINAPI *SendSAS_Func)(BOOL);
 SendSAS_Func SendSAS;
-	
+
 void ReplaySuppressedKeys();
-	
+
 enum STATE
 {
 	Idle = 0,
@@ -131,18 +131,160 @@ void DebugPrintf(const char* format, ...)
 }
 
 #endif
+
+EXTERN_C_END
+
+template <class T, int capacity = 256>
+class MyQueue
+{
+private:
+	//static const int capacity = 256;
+	T items[capacity];
+	int _front = 0, _size = 0;
+public:
+	T& front()
+	{
+		return items[_front];
+	}
+	void pop()
+	{
+		if (_size > 0)
+		{
+			_front++;
+			if (_front >= capacity)
+			{
+				_front -= capacity;
+			}
+			_size--;
+		}
+	}
+	bool empty()
+	{
+		return _size == 0;
+	}
+	int size()
+	{
+		return _size;
+	}
+	void push(const T& item)
+	{
+		if (_size >= capacity)
+		{
+			return;
+		}
+		int back = _front + _size;
+		if (back >= capacity)
+		{
+			back -= capacity;
+		}
+		_size++;
+		items[back] = item;
+	}
+};
+
+EXTERN_C_START
+
+CONDITION_VARIABLE secondaryThreadConditionVariable;
+CRITICAL_SECTION secondaryThreadCriticalSection;
+MyQueue<USHORT, 256> keyQueue;
+//std::queue<USHORT> keyQueue;
+
+//std::mutex keyQueueMutex;
+//HANDLE secondaryThreadEvent;
+//std::atomic_bool secondaryThreadQuit;
+
+void SetKeyDown(INPUT* input, DWORD VKEY);
+
+DWORD WINAPI SecondaryThreadMain(void* unused)
+{
+	while (true)
+	{
+		EnterCriticalSection(&secondaryThreadCriticalSection);
+		while (keyQueue.empty())
+		{
+			SleepConditionVariableCS(&secondaryThreadConditionVariable, &secondaryThreadCriticalSection, INFINITE);
+		}
+		USHORT vkey = keyQueue.front();
+		keyQueue.pop();
+		LeaveCriticalSection(&secondaryThreadCriticalSection);
+		INPUT input;
+		SetKeyDown(&input, vkey & 0x7FFF);
+		if (vkey & 0x8000)
+		{
+			input.ki.dwFlags |= KEYEVENTF_KEYUP;
+		}
+		#if DEBUG
+		{
+			DWORD tickCount = MyGetTickCount();
+			const char* keyDownString = "Pressed";
+			if (input.ki.dwFlags & KEYEVENTF_KEYUP)
+			{
+				keyDownString = "Released";
+			}
+			DebugPrintf("%d Secondary Thread: SendInput %s %s\n", tickCount, GetVKeyName(input.ki.wVk), keyDownString);
+		}
+		#endif
+		SendInput(1, &input, sizeof(input));
+	}
+	return 0;
+}
+
+void SecondaryThreadCreate()
+{
+	InitializeConditionVariable(&secondaryThreadConditionVariable);
+	InitializeCriticalSection(&secondaryThreadCriticalSection);
+	new (&keyQueue) MyQueue<USHORT, 256>();
+	HANDLE hThread = CreateThread(NULL, 0, SecondaryThreadMain, 0, NULL, NULL);
+}
+
+void InjectKeyDownAsync(int key)
+{
+	#if DEBUG
+	DebugPrintf("%d InjectKeyDownAsync %s\n", MyGetTickCount(), GetVKeyName(key));
+	#endif
+	EnterCriticalSection(&secondaryThreadCriticalSection);
+	bool wasEmpty = keyQueue.empty();
+	keyQueue.push(key);
+	if (wasEmpty)
+	{
+		WakeConditionVariable(&secondaryThreadConditionVariable);
+	}
+	LeaveCriticalSection(&secondaryThreadCriticalSection);
+}
+void InjectKeyUpAsync(int key)
+{
+	#if DEBUG
+	DebugPrintf("%d InjectKeyUpAsync %s\n", MyGetTickCount(), GetVKeyName(key));
+	#endif
+	EnterCriticalSection(&secondaryThreadCriticalSection);
+	bool wasEmpty = keyQueue.empty();
+	keyQueue.push(key | 0x8000);
+	if (wasEmpty)
+	{
+		WakeConditionVariable(&secondaryThreadConditionVariable);
+	}
+	LeaveCriticalSection(&secondaryThreadCriticalSection);
+}
+bool AsyncKeyQueueEmpty()
+{
+	EnterCriticalSection(&secondaryThreadCriticalSection);
+	bool isEmpty = keyQueue.empty();
+	LeaveCriticalSection(&secondaryThreadCriticalSection);
+	return isEmpty;
+}
+
 //extern void TimerProc(MSG& msg);
 int APIENTRY MyWinMain()
 {
-	commandLine = GetCommandLineW();
-	#if DEBUG
-	wprintf(L"Command Line: %s\n", commandLine);
-	#endif
+	//commandLine = GetCommandLineW();
+	//#if DEBUG
+	//wprintf(L"Command Line: %s\n", commandLine);
+	//#endif
 
-	argv = CommandLineToArgvW(commandLine, &argc);
-	#if DEBUG
-	wprintf(L"argv[0]: %s\n", argv[0]);
-	#endif
+	//argv = CommandLineToArgvW(commandLine, &argc);
+	//#if DEBUG
+	//wprintf(L"argv[0]: %s\n", argv[0]);
+	//#endif
 
 	HANDLE mutex = OpenMutexA(SYNCHRONIZE, false, "Mutex for NoCopilotKey");
 	if (mutex == NULL)
@@ -153,6 +295,8 @@ int APIENTRY MyWinMain()
 	{
 		return -1;
 	}
+
+	SecondaryThreadCreate();
 
 	sasModule = LoadLibraryA("sas.dll");
 	if (sasModule != NULL)
@@ -267,12 +411,12 @@ void ReplaySuppressedKeys()
 	if (leftWindowsSuppressed)
 	{
 		leftWindowsSuppressed = false;
-		InjectKeyDown(VK_LWIN);
+		InjectKeyDownAsync(VK_LWIN);
 	}
 	if (leftShiftSuppressed)
 	{
 		leftShiftSuppressed = false;
-		InjectKeyDown(VK_LSHIFT);
+		InjectKeyDownAsync(VK_LSHIFT);
 	}
 }
 
@@ -347,7 +491,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				leftWindowsSuppressed = false;
 				if (!rightCtrlDown)
 				{
-					InjectKeyDown(VK_RCONTROL);
+					InjectKeyDownAsync(VK_RCONTROL);
 				}
 				return -1;  //block key
 			}
@@ -370,19 +514,19 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			//otherwise Game Bar sees the injected Key Down after the real Key Up.
 			if (leftWindowsWasSuppressed && keyCode == VK_LWIN)
 			{
-				InjectKeyUp(VK_LWIN);
+				InjectKeyUpAsync(VK_LWIN);
 				return -1;
 			}
 			if (leftShiftWasSuppressed && keyCode == VK_LSHIFT)
 			{
-				InjectKeyUp(VK_LSHIFT);
+				InjectKeyUpAsync(VK_LSHIFT);
 				return -1;
 			}
 		}
 		if (keyCode == VK_F23 && releaseState == STATE::F23)
 		{
 			SetReleaseState(STATE::LeftShift);
-			InjectKeyUp(VK_RCONTROL);
+			InjectKeyUpAsync(VK_RCONTROL);
 			return -1;  //block key
 		}
 		if (keyCode == VK_LSHIFT && releaseState == STATE::LeftShift)
