@@ -163,14 +163,8 @@ void InjectKeyUpAsync(DWORD vKey)
 	PostMessage(mainWindow, WM_USER, vKey, 1);
 }
 
-//bool KeyIsDown(DWORD vKey)
-//{
-//	return 0 != (GetAsyncKeyState(vKey) & 0x8000);
-//}
-
 void SetKeyDown(INPUT* input, DWORD VKEY);
 void SetKeyUp(INPUT* input, DWORD VKEY);
-//HRAWINPUT lastRawInputDevice = NULL;
 
 LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -196,7 +190,6 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		{
 			//Raw Input isn't really raw, it's been processed by low level keyboard hooks first
 			HRAWINPUT handle = (HRAWINPUT)lParam;
-			//lastRawInputDevice = handle;
 			RAWINPUT data = {};
 			data.header.dwSize = sizeof(RAWINPUTHEADER);
 			UINT size = sizeof(data);
@@ -225,14 +218,7 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 int APIENTRY MyWinMain()
 {
 	//commandLine = GetCommandLineW();
-	//#if DEBUG
-	//wprintf(L"Command Line: %s\n", commandLine);
-	//#endif
-
 	//argv = CommandLineToArgvW(commandLine, &argc);
-	//#if DEBUG
-	//wprintf(L"argv[0]: %s\n", argv[0]);
-	//#endif
 
 	HANDLE mutex = OpenMutexA(SYNCHRONIZE, false, "Mutex for NoCopilotKey");
 	if (mutex == NULL)
@@ -352,20 +338,6 @@ void SetKeyUp(INPUT* input, DWORD VKEY)
 	input->ki.dwFlags = KEYEVENTF_KEYUP;
 }
 
-//void InjectKeyUp(DWORD VKEY)
-//{
-//	INPUT input;
-//	SetKeyUp(&input, VKEY);
-//	SendInput(1, &input, sizeof(INPUT));
-//}
-
-//void InjectKeyDown(DWORD VKEY)
-//{
-//	INPUT input;
-//	SetKeyDown(&input, VKEY);
-//	SendInput(1, &input, sizeof(INPUT));
-//}
-
 bool HaveSuppressedKeys()
 {
 	return leftWindowsSuppressed || leftShiftSuppressed;
@@ -385,9 +357,6 @@ void ReplaySuppressedKeys()
 	}
 	CancelTimer();
 }
-
-bool blockNextLShiftRelease = false;
-bool blockNextLWinRelease = false;
 
 LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 {
@@ -410,9 +379,6 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 	{
 		return CallNextHookEx(NULL, code, wParam, lParam);
 	}
-
-	//DELETME: Do Nothing
-	//return CallNextHookEx(NULL, code, wParam, lParam);
 
 	if (pressed)
 	{
@@ -502,38 +468,20 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 		}
 		if (keyCode == VK_F23 && releaseState == STATE::F23)
 		{
-			//blockNextLShiftRelease = true;
-			//blockNextLWinRelease = true;
 			SetReleaseState(STATE::LeftShift);
 			InjectKeyUpAsync(VK_RCONTROL);
 			return -1;  //block key
 		}
 		if (keyCode == VK_LSHIFT && releaseState == STATE::LeftShift)
 		{
-			//blockNextLShiftRelease = false;
 			SetReleaseState(STATE::LeftWindows);
 			return -1;  //block key
 		}
 		if (keyCode == VK_LWIN && releaseState == STATE::LeftWindows)
 		{
-			//blockNextLWinRelease = false;
 			SetReleaseState(STATE::Idle);
 			return -1;  //block key
 		}
-		//if (keyCode == VK_LSHIFT && blockNextLShiftRelease)
-		//{
-		//	//should not reach here unless somehow the key order was wrong
-		//	blockNextLShiftRelease = false;
-		//	blockNextLWinRelease = false;
-		//	return -1;
-		//}
-		//if (keyCode == VK_LWIN && blockNextLWinRelease)
-		//{
-		//	//should not reach here unless somehow the key order was wrong
-		//	blockNextLShiftRelease = false;
-		//	blockNextLWinRelease = false;
-		//	return -1;
-		//}
 	}
 
 	return CallNextHookEx(NULL, code, wParam, lParam);
