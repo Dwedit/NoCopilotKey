@@ -11,6 +11,7 @@ typedef uint32_t u32;
 #define DEBUG _DEBUG
 
 #define USE_SAS 0
+#define DO_NOTHING 0
 
 #if DEBUG
 
@@ -88,6 +89,9 @@ STATE releaseState;
 LPWSTR commandLine;
 int argc;
 PWSTR* argv;
+
+UINT_PTR reattachTimer;
+HHOOK globalKeyboardHook;
 
 bool leftWindowsSuppressed;
 bool leftShiftSuppressed;
@@ -186,7 +190,6 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			return 0;
 		}
 	case WM_INPUT:
-		if (msg == WM_INPUT)
 		{
 			//Raw Input isn't really raw, it's been processed by low level keyboard hooks first
 			HRAWINPUT handle = (HRAWINPUT)lParam;
@@ -215,11 +218,14 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
+void CALLBACK TimerHandlerToReattachHook(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
+
 int APIENTRY MyWinMain()
 {
 	//commandLine = GetCommandLineW();
 	//argv = CommandLineToArgvW(commandLine, &argc);
 
+	#if !DO_NOTHING
 	HANDLE mutex = OpenMutexA(SYNCHRONIZE, false, "Mutex for NoCopilotKey");
 	if (mutex == NULL)
 	{
@@ -229,6 +235,7 @@ int APIENTRY MyWinMain()
 	{
 		return -1;
 	}
+	#endif
 
 	#if USE_SAS
 	sasModule = LoadLibraryA("sas.dll");
@@ -253,10 +260,14 @@ int APIENTRY MyWinMain()
 	rawInputDevice.dwFlags = RIDEV_INPUTSINK;
 	rawInputDevice.hwndTarget = mainWindow;
 
+	#if !DO_NOTHING
 	BOOL okay = RegisterRawInputDevices(&rawInputDevice, 1, sizeof(RAWINPUTDEVICE));
+	#endif
 
-	HHOOK hook = SetWindowsHookExW(WH_KEYBOARD_LL, &MyKeyboardProc, module, 0);
+	globalKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, &MyKeyboardProc, module, 0);
 	int lastError = GetLastError();
+
+	reattachTimer = SetTimer(mainWindow, 2, 1000, &TimerHandlerToReattachHook);
 
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0) > 0)
@@ -265,6 +276,13 @@ int APIENTRY MyWinMain()
 		DispatchMessage(&msg);
 	}
 	return (int)msg.wParam;
+}
+
+void CALLBACK TimerHandlerToReattachHook(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
+{
+	reattachTimer = SetTimer(mainWindow, reattachTimer, 1000, &TimerHandlerToReattachHook);
+	UnhookWindowsHookEx(globalKeyboardHook);
+	globalKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, &MyKeyboardProc, GetModuleHandle(NULL), 0);
 }
 
 void SetPressState(STATE state)
@@ -379,6 +397,10 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 	{
 		return CallNextHookEx(NULL, code, wParam, lParam);
 	}
+	
+	#if DO_NOTHING
+	return CallNextHookEx(NULL, code, wParam, lParam);
+	#endif
 
 	if (pressed)
 	{
