@@ -65,6 +65,10 @@ Then when you release the Copilot key:
 
 # Version History
 
+1.0.2.0
+ * No longer calls SendInput from within the hook code, improving responsiveness
+ * Quick presses of Windows Key and another key should now be in the correct order
+
 1.0.1.2
  * Installer can now correctly close the program to upgrade it (forgot to wait for process to finish closing)
  * Installer no longer lets you install as both Administrator and regular user.
