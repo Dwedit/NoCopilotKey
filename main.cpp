@@ -8,10 +8,30 @@ typedef uint32_t u32;
 #include <fcntl.h>
 #include <stdio.h>
 
+//Test mode: Make backquote act as copilot key  (for testing on a keyboard which doesn't have a copilot key)
+//Also allows testing invalid sequences
+#define TEST 1
+
+//Debug mode: adds a console and logging (enabled for debug builds)
 #define DEBUG _DEBUG
 
+//Whether to try to handle invalid key sequences
+#define HANDLE_INVALID 1
+
+//Whether to include Alt + Ctrl + Del code (Smart App Control doesn't like it)
 #define USE_SAS 0
+
+//Whether to make a build which does not interfere with the keyboard and only displays debug log messages
 #define DO_NOTHING 0
+
+//Whether to reinstall the keyboard hook every 1 second (to override programs which install their own key hooks, such as Remote Desktop Connection)
+#define REINSTALL_HOOK 1
+
+//The timeout for the three key sequence - If it takes longer than this, don't treat it as a copilot key press/release
+const int KeyChordTimeout = 30;
+
+//The timeout for the three key sequence timer, used for transitions from LWIN -> LSHIFT -> F23
+const int KeyChordTimerTimeout = 100;
 
 #if DEBUG
 
@@ -65,7 +85,7 @@ DWORD WINAPI DebugThreadMain(void* unused)
 	return 0;
 }
 
-#endif
+#endif //DEBUG
 
 EXTERN_C_START
 
@@ -73,7 +93,7 @@ EXTERN_C_START
 HMODULE sasModule;
 typedef VOID (WINAPI *SendSAS_Func)(BOOL);
 SendSAS_Func SendSAS;
-#endif
+#endif //USE_SAS
 
 void ReplaySuppressedKeys();
 
@@ -90,17 +110,32 @@ LPWSTR commandLine;
 int argc;
 PWSTR* argv;
 
-UINT_PTR reattachTimer;
+HWND mainWindow;
 HHOOK globalKeyboardHook;
+
+#if REINSTALL_HOOK
+UINT_PTR reattachTimer;
+#endif
+
+DWORD releaseSequenceTimestamp;
+#if HANDLE_INVALID
+DWORD outOfPressSequenceTimestamp;
+DWORD outOfReleaseSequenceTimestamp;
+DWORD leftShiftTimestamp;
+DWORD leftShiftTimestamp2;
+bool leftShiftDown, leftShiftDown2;
+bool outOfPressSequence = false;
+bool outOfPressSequenceSuppressLeftShift = false;
+bool outOfPressSequenceSuppressLeftWindows = false;
+bool outOfReleaseSequence = false;
+#endif //HANDLE_INVALID
 
 bool leftWindowsSuppressed;
 bool leftShiftSuppressed;
 //bool f23Suppressed;
 bool rightCtrlDown;
-
 bool leftCtrlDown, leftAltDown, rightAltDown;
 
-HWND mainWindow;
 
 int APIENTRY MyWinMain();
 
@@ -149,7 +184,29 @@ void DebugPrintf(const char* format, ...)
 	va_end(args);
 }
 
-#endif
+#endif //DEBUG
+
+#if TEST
+void InjectCopilotKeyDown()
+{
+	//proper sequence:
+	//PostMessage(mainWindow, WM_USER, VK_LWIN, 2);
+	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
+	//PostMessage(mainWindow, WM_USER, VK_F23, 2);
+
+	//invalid sequence: LSHIFT F23
+	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
+	//PostMessage(mainWindow, WM_USER, VK_LWIN, 2);
+	PostMessage(mainWindow, WM_USER, VK_F23, 2);
+}
+void InjectCopilotKeyUp()
+{
+	//proper sequence:
+	PostMessage(mainWindow, WM_USER, VK_F23, 3);
+	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 3);
+	PostMessage(mainWindow, WM_USER, VK_LWIN, 3);
+}
+#endif //TEST
 
 void InjectKeyDownAsync(DWORD vKey)
 {
@@ -177,7 +234,7 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_USER:
 		{
-			bool isRelease = lParam != 0;
+			bool isRelease = 1 == (lParam & 1);
 			if (isRelease)
 			{
 				SetKeyUp(&input, (DWORD)wParam);
@@ -186,6 +243,13 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			{
 				SetKeyDown(&input, (DWORD)wParam);
 			}
+			#if TEST
+			if (0 != (lParam & 2))
+			{
+				//Set a special Extra Info on the key input so that we don't ignore that injected keypress
+				input.ki.dwExtraInfo = 0x12345678;
+			}
+			#endif //TEST
 			SendInput(1, &input, sizeof(input));
 			return 0;
 		}
@@ -202,7 +266,7 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			//if (data.data.keyboard.Message == WM_KEYUP) pressString = "released";
 			//if (data.data.keyboard.Message == WM_KEYDOWN) pressString = "pressed";
 			//DebugPrintf("Raw Input: %s %s\n", GetVKeyName(data.data.keyboard.VKey), pressString);
-			#endif
+			//#endif //DEBUG
 			if (data.data.keyboard.Message == WM_KEYUP)
 			{
 				//If F23 key is detected as being released here, then somehow it didn't get rejected by the hook
@@ -218,24 +282,33 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
+#if REINSTALL_HOOK
 void CALLBACK TimerHandlerToReattachHook(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
+#endif
 
 int APIENTRY MyWinMain()
 {
+	#if HANDLE_INVALID
+	outOfPressSequenceTimestamp = GetTickCount();
+	leftShiftTimestamp = GetTickCount();
+	leftShiftTimestamp2 = GetTickCount();
+	#endif //HANDLE_INVALID
+
 	//commandLine = GetCommandLineW();
 	//argv = CommandLineToArgvW(commandLine, &argc);
 
-	#if !DO_NOTHING
-	HANDLE mutex = OpenMutexA(SYNCHRONIZE, false, "Mutex for NoCopilotKey");
-	if (mutex == NULL)
+	if (!DO_NOTHING)
 	{
-		mutex = CreateMutexA(NULL, true, "Mutex for NoCopilotKey");
+		HANDLE mutex = OpenMutexA(SYNCHRONIZE, false, "Mutex for NoCopilotKey");
+		if (mutex == NULL)
+		{
+			mutex = CreateMutexA(NULL, true, "Mutex for NoCopilotKey");
+		}
+		else
+		{
+			return -1;
+		}
 	}
-	else
-	{
-		return -1;
-	}
-	#endif
 
 	#if USE_SAS
 	sasModule = LoadLibraryA("sas.dll");
@@ -243,7 +316,7 @@ int APIENTRY MyWinMain()
 	{
 		SendSAS = (SendSAS_Func)GetProcAddress(sasModule, "SendSAS");
 	}
-	#endif
+	#endif //USE_SAS
 
 	HMODULE module = GetModuleHandleW(NULL);
 
@@ -260,14 +333,17 @@ int APIENTRY MyWinMain()
 	rawInputDevice.dwFlags = RIDEV_INPUTSINK;
 	rawInputDevice.hwndTarget = mainWindow;
 
-	#if !DO_NOTHING
-	BOOL okay = RegisterRawInputDevices(&rawInputDevice, 1, sizeof(RAWINPUTDEVICE));
-	#endif
+	if (!DO_NOTHING)
+	{
+		BOOL okay = RegisterRawInputDevices(&rawInputDevice, 1, sizeof(RAWINPUTDEVICE));
+	}
 
 	globalKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, &MyKeyboardProc, module, 0);
 	int lastError = GetLastError();
 
+	#if REINSTALL_HOOK
 	reattachTimer = SetTimer(mainWindow, 2, 1000, &TimerHandlerToReattachHook);
+	#endif //REINSTALL_HOOK
 
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0) > 0)
@@ -278,12 +354,28 @@ int APIENTRY MyWinMain()
 	return (int)msg.wParam;
 }
 
+#if REINSTALL_HOOK
 void CALLBACK TimerHandlerToReattachHook(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 {
 	reattachTimer = SetTimer(mainWindow, reattachTimer, 1000, &TimerHandlerToReattachHook);
 	UnhookWindowsHookEx(globalKeyboardHook);
 	globalKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, &MyKeyboardProc, GetModuleHandle(NULL), 0);
 }
+#endif //REINSTALL_HOOK
+
+#if HANDLE_INVALID
+void SetLeftShiftDown(bool isDown)
+{
+	if (isDown != leftShiftDown)
+	{
+		DebugPrintf("    Left shift changed: %d -> %d\n", leftShiftDown, isDown);
+	}
+	leftShiftDown2 = leftShiftDown;
+	leftShiftDown = isDown;
+	leftShiftTimestamp2 = leftShiftTimestamp2;
+	leftShiftTimestamp = GetTickCount();
+}
+#endif //HANDLE_INVALID
 
 void SetPressState(STATE state)
 {
@@ -292,7 +384,7 @@ void SetPressState(STATE state)
 	{
 		DebugPrintf("    Press State Transition: %d -> %d\n", pressState, state);
 	}
-	#endif
+	#endif //DEBUG
 	pressState = state;
 }
 
@@ -303,7 +395,7 @@ void SetReleaseState(STATE state)
 	{
 		DebugPrintf("    Release State Transition: %d -> %d\n", releaseState, state);
 	}
-	#endif
+	#endif //DEBUG
 	releaseState = state;
 }
 
@@ -322,7 +414,7 @@ void EnsureTimer()
 {
 	if (activeTimer == 0)
 	{
-		activeTimer = SetTimer(mainWindow, 1, 100, TimerProc);
+		activeTimer = SetTimer(mainWindow, 1, KeyChordTimerTimeout, TimerProc);
 		#if DEBUG
 		DebugPrintf("    Timer set\n");
 		#endif	
@@ -392,25 +484,69 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 	bool injected = 0 != (flags & LLKHF_INJECTED);
 	bool released = 0 != (flags & (1 << 7));
 	bool pressed = !released;
+	#if TEST
+	//Special Extra info indicates that we don't ignore a special injected keypress
+	if (hookStruct->dwExtraInfo == 0x12345678)
+	{
+		injected = false;
+	}
+	#endif //TEST
 
 	if (injected)
 	{
 		return CallNextHookEx(NULL, code, wParam, lParam);
 	}
 	
-	#if DO_NOTHING
-	return CallNextHookEx(NULL, code, wParam, lParam);
-	#endif
+	if (DO_NOTHING)
+	{
+		return CallNextHookEx(NULL, code, wParam, lParam);
+	}
+
+	#if HANDLE_INVALID
+	if (outOfPressSequence)
+	{
+		DWORD outOfPressSequenceElapsedTime = GetTickCount() - outOfPressSequenceTimestamp;
+		if (outOfPressSequenceElapsedTime > KeyChordTimeout)
+		{
+			outOfPressSequence = false;
+		}
+	}
+	if (outOfReleaseSequence)
+	{
+		DWORD outOfReleaseSequenceElapsedTime = GetTickCount() - outOfReleaseSequenceTimestamp;
+		if (outOfReleaseSequenceElapsedTime > KeyChordTimeout)
+		{
+			outOfReleaseSequence = false;
+		}
+	}
+	#endif //HANDLE_INVALID
 
 	if (pressed)
 	{
+		#if TEST
+		if (keyCode == VK_OEM_3) // make ` key count as copilot key for test build
+		{
+			InjectCopilotKeyDown();
+			return -1;
+		}
+		#endif //TEST
+		////any key press ends an out-of-sequence key release sequence
+		//outOfReleaseSequence = false;
+
 		if (keyCode == VK_LWIN)
 		{
 			ReplaySuppressedKeys();
 			leftWindowsSuppressed = true;
 			SetPressState(STATE::LeftWindows);
 			EnsureTimer();
-			return -1;  //block key
+			#if HANDLE_INVALID
+			if (outOfPressSequence && outOfPressSequenceSuppressLeftWindows)
+			{
+				//don't replay left windows the next time the sequence fails
+				leftWindowsSuppressed = false;
+			}
+			#endif //HANDLE_INVALID
+			return -1;  //block LWIN key
 		}
 
 		if (pressState == STATE::LeftWindows)
@@ -419,12 +555,60 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			{
 				leftShiftSuppressed = true;
 				SetPressState(STATE::LeftShift);
-				return -1;  //block key
+				return -1;  //block LSHIFT key
 			}
-			//else if (keyCode == VK_F23)
-			//{
-			//	goto handleF23;
-			//}
+			#if HANDLE_INVALID
+			else if (keyCode == VK_F23)
+			{
+				//Left Windows -> F23 breaks the sequence
+				#if DEBUG
+				DebugPrintf("Out-of-sequence key press: LWIN -> F23\n");
+				#endif
+				//keep Left Windows Key suppressed (don't replay it later)
+				if (leftWindowsSuppressed)
+				{
+					leftWindowsSuppressed = false;
+				}
+				outOfPressSequenceTimestamp = GetTickCount();
+				outOfPressSequence = true;
+				outOfPressSequenceSuppressLeftShift = false;
+				//Possibility of bad sequence: LShift LWin F23 or LWin F23 LShift
+				//Was LShift last pressed within 30ms?  (LShift LWin F23)
+				if (leftShiftDown && ((GetTickCount() - leftShiftTimestamp) <= KeyChordTimeout))
+				{
+					//Was LShift previously in a pressed state?
+					if (leftShiftDown2)
+					{
+						//Left shift was held down when seeing a left shift press, we don't want Left Shift Released, leave it alone
+						#if DEBUG
+						DebugPrintf("    Left shift was held down, do not release the key\n");
+						#endif
+					}
+					else
+					{
+						#if DEBUG
+						DebugPrintf("    Left shift had become pressed within 30ms, release the key\n");
+						#endif
+						//send Left Shift Released to cancel the prior keypress
+						InjectKeyUpAsync(VK_LSHIFT);
+						//Reset leftShiftDown flag to false to avoid stuck shift key
+						SetLeftShiftDown(false);
+					}
+				}
+				else
+				{
+					//Possibility of LWin F23 LShift (in the future)
+					//Suppress Left Shift if it is pressed with 30ms
+					outOfPressSequenceSuppressLeftShift = true;
+				}
+				SetPressState(STATE::Idle);
+				SetReleaseState(STATE::F23);
+				CancelTimer();
+				leftWindowsSuppressed = false;
+				InjectKeyDownAsync(VK_RCONTROL);
+				return -1;  //block F23 key
+			}
+			#endif //HANDLE_INVALID
 			else
 			{
 				//For keys that aren't in the sequence
@@ -435,7 +619,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 					//block key now then enqueue it for replay afterwards
 					//so that the key happens after the press to LWIN or LSHIFT
 					InjectKeyDownAsync(keyCode);
-					return -1;
+					return -1;  //block F23 key
 				}
 			}
 		}
@@ -454,7 +638,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				{
 					InjectKeyDownAsync(VK_RCONTROL);
 				}
-				return -1;  //block key
+				return -1;  //block F23 key
 			}
 			else
 			{
@@ -470,26 +654,174 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				}
 			}
 		}
-		//if (keyCode == VK_F23)
-		//{
-		//	handleF23:
-		//	//out of sequence keypress to F23
-		//	#if DEBUG
-		//	DebugPrintf("Out-of-sequence F23 key press!\n");
-		//	#endif
-		//	InjectKeyUpAsync(VK_LSHIFT);
-		//	InjectKeyUpAsync(VK_LWIN);
-		//	InjectKeyDownAsync(VK_RCONTROL);
-		//	SetPressState(STATE::Idle);
-		//	SetReleaseState(STATE::F23);
-		//	CancelTimer();
-		//	leftShiftSuppressed = false;
-		//	leftWindowsSuppressed = false;
-		//	return -1;
-		//}
+		#if HANDLE_INVALID
+		if (keyCode == VK_F23)
+		{
+			//Out of sequence keypress to F23
+			#if DEBUG
+			DebugPrintf("Out-of-sequence key press: F23\n");
+			#endif
+			//possible sequences handled here:
+			//F23
+			//F23 LShift
+			//F23 LShift LWin
+			//LShift F23
+			//LShift F23 LWin
+			//F23 LWin LShift
+			//sequences handled elsewhere:
+			//LWin LShift F23 (proper sequence)
+			//LWin F23 LShift (handled by LWin -> F23 code)
+			//LWin F23 (handled by LWin -> F23 code)
+			//LShift LWin F23 (handled by LWin -> F23 code)
+			
+			//so far, only correct sequence and LShift F23 have been seen, LShift LWin F23 has allegedly been seen too
+
+			outOfPressSequenceTimestamp = GetTickCount();
+			outOfPressSequence = true;
+			outOfPressSequenceSuppressLeftShift = false;
+			//To handle the cases where LShift comes before F23:
+			//left shift may have been pressed with 30ms, if it was, release left shift unless it was held down
+			if (leftShiftDown && ((GetTickCount() - leftShiftTimestamp) <= KeyChordTimeout))
+			{
+				//Was LShift previously in a pressed state?
+				if (leftShiftDown2)
+				{
+					//Left shift was held down when seeing a left shift press, we don't want Left Shift Released, leave it alone
+					#if DEBUG
+					DebugPrintf("    Left shift was held down, do not release the key\n");
+					#endif
+				}
+				else
+				{
+					#if DEBUG
+					DebugPrintf("    Left shift had become pressed within 30ms, release the key\n");
+					#endif
+					//send Left Shift Released to cancel the prior keypress
+					InjectKeyUpAsync(VK_LSHIFT);
+					//Reset leftShiftDown flag to false to avoid stuck shift key
+					SetLeftShiftDown(false);
+				}
+			}
+			else
+			{
+				//Possibility of LShift in the future as part of the sequence
+				//Suppress Left Shift if it is pressed with 30ms
+				outOfPressSequenceSuppressLeftShift = true;
+			}
+			SetPressState(STATE::Idle);
+			SetReleaseState(STATE::F23);
+			CancelTimer();
+			outOfPressSequenceSuppressLeftWindows = true;
+			leftWindowsSuppressed = false;
+			InjectKeyDownAsync(VK_RCONTROL);
+			return -1;  //block F23 key
+		}
+
+		if (keyCode == VK_LSHIFT)
+		{
+			//Left Shift is tracked by the program in order to detect the invalid sequence LSHIFT F23
+			SetLeftShiftDown(true);
+			#if DEBUG
+			if (leftShiftDown2)
+			{
+				DebugPrintf("    %d Left shift pressed while already held down\n", leftShiftTimestamp);
+			}
+			#endif //DEBUG
+			if (outOfPressSequence && outOfPressSequenceSuppressLeftShift)
+			{
+				outOfPressSequenceSuppressLeftShift = false;
+				return -1;
+			}
+		}
+		//Allow other keys to force-break an invalid sequence
+		if (!(keyCode == VK_F23 || keyCode == VK_LSHIFT || keyCode == VK_LWIN))
+		{
+			outOfPressSequence = false;
+		}
+		#endif  //HANDLE_INVALID
 	}
 	else if (released)
 	{
+		#if TEST
+		if (keyCode == VK_OEM_3) // make ` key count as copilot key for a test mode build
+		{
+			InjectCopilotKeyUp();
+			return -1;
+		}
+		#endif //TEST
+
+		#if HANDLE_INVALID
+		//Allow releasing any key to force-break an invalid sequence
+		outOfPressSequence = false;
+		#endif
+
+		if (keyCode == VK_F23 && releaseState == STATE::F23)
+		{
+			SetReleaseState(STATE::LeftShift);
+			InjectKeyUpAsync(VK_RCONTROL);
+			releaseSequenceTimestamp = GetTickCount();
+			return -1;  //block F23 key release
+		}
+		if (keyCode == VK_LSHIFT && releaseState == STATE::LeftShift)
+		{
+			if (GetTickCount() - releaseSequenceTimestamp < KeyChordTimeout)
+			{
+				SetReleaseState(STATE::LeftWindows);
+				return -1;  //block LSHIFT key release
+			}
+			else
+			{
+				//sequence broken by taking too long to release LSHIFT after F23  (should not happen, has not been seen)
+				SetReleaseState(STATE::Idle);
+			}
+		}
+		if (keyCode == VK_LWIN && releaseState == STATE::LeftWindows)
+		{
+			if (GetTickCount() - releaseSequenceTimestamp < KeyChordTimeout)
+			{
+				SetReleaseState(STATE::Idle);
+				return -1;  //block LWIN key release
+			}
+			else
+			{
+				//sequence broken by taking too long to release LWIN after LSHIFT (should not happen, has not been seen)
+				SetReleaseState(STATE::Idle);
+			}
+		}
+
+		#if HANDLE_INVALID
+		if (keyCode == VK_LSHIFT)
+		{
+			SetLeftShiftDown(false);
+		}
+
+		if (keyCode == VK_F23)
+		{
+			//Out-of-sequence F23 key release
+			#if DEBUG
+			DebugPrintf("Out-of-sequence F23 key release!\n");
+			#endif
+			//Possible sequences:
+			//F23 LShift LWin (correct sequence)
+			//F23 LWin LShift
+			//F23 LShift
+			//F23 LWin
+			//F23
+			//LShift F23
+			//LShift LWin F23
+			//LShift F23 LWin
+			//LWin F23
+			//LWin LShift F23
+			//So far, only the correct release sequence has been seen
+
+			//TODO: come up with rules for degenerate cases, for now just release all the keys
+			InjectKeyUpAsync(VK_RCONTROL);
+			InjectKeyUpAsync(VK_LSHIFT);
+			InjectKeyUpAsync(VK_LWIN);
+			return -1;
+		}
+		#endif //HANDLE_INVALID
+
 		if (pressState != STATE::Idle)
 		{
 			bool leftWindowsWasSuppressed = leftWindowsSuppressed;
@@ -508,32 +840,6 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				InjectKeyUpAsync(VK_LSHIFT);
 				return -1;
 			}
-		}
-		if (keyCode == VK_F23 && releaseState == STATE::F23)
-		{
-			SetReleaseState(STATE::LeftShift);
-			InjectKeyUpAsync(VK_RCONTROL);
-			return -1;  //block key
-		}
-		if (keyCode == VK_LSHIFT && releaseState == STATE::LeftShift)
-		{
-			SetReleaseState(STATE::LeftWindows);
-			return -1;  //block key
-		}
-		if (keyCode == VK_LWIN && releaseState == STATE::LeftWindows)
-		{
-			SetReleaseState(STATE::Idle);
-			return -1;  //block key
-		}
-		if (keyCode == VK_F23)
-		{
-			#if DEBUG
-			DebugPrintf("Out-of-sequence F23 key release!\n");
-			#endif
-			InjectKeyUpAsync(VK_RCONTROL);
-			InjectKeyUpAsync(VK_LSHIFT);
-			InjectKeyUpAsync(VK_LWIN);
-			return -1;
 		}
 	}
 
@@ -568,14 +874,14 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 	{
 		DebugPrintf("%d %s%s0x%02X %s\n", arrivalTime, injectedMessage, pressedMessage, keyCode, GetVKeyName(keyCode));
 	}
-	#endif
+	#endif //DEBUG
 	LRESULT result = MyKeyboardProc2(code, wParam, lParam);
 	#if DEBUG
 	if (keyCode > 0 && result != 0)
 	{
 		DebugPrintf("  %d %s%s0x%02X %s was suppressed\n", arrivalTime, injectedMessage, pressedMessage, keyCode, GetVKeyName(keyCode));
 	}
-	#endif			
+	#endif //DEBUG			
 	if (result == 0)
 	{
 		if (pressed)
@@ -605,7 +911,7 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 					DebugPrintf("Sending Alt + Ctrl + Del (SendSAS)\n");
 					#endif
 					if (SendSAS != NULL) SendSAS(true);
-					#endif
+					#endif //USE_SAS
 				}
 			}
 		}
@@ -885,5 +1191,5 @@ const char* GetVKeyName(int key)
 	return vkeyList[key & 255];
 }
 
-#endif
+#endif //DEBUG
 EXTERN_C_END
