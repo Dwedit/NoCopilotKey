@@ -197,11 +197,11 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			data.header.dwSize = sizeof(RAWINPUTHEADER);
 			UINT size = sizeof(data);
 			GetRawInputData(handle, RID_INPUT, &data, &size, sizeof(RAWINPUTHEADER));
-			#if DEBUG
-			const char* pressString = "Other message";
-			if (data.data.keyboard.Message == WM_KEYUP) pressString = "released";
-			if (data.data.keyboard.Message == WM_KEYDOWN) pressString = "pressed";
-			DebugPrintf("Raw Input: %s %s\n", GetVKeyName(data.data.keyboard.VKey), pressString);
+			//#if DEBUG
+			//const char* pressString = "Other message";
+			//if (data.data.keyboard.Message == WM_KEYUP) pressString = "released";
+			//if (data.data.keyboard.Message == WM_KEYDOWN) pressString = "pressed";
+			//DebugPrintf("Raw Input: %s %s\n", GetVKeyName(data.data.keyboard.VKey), pressString);
 			#endif
 			if (data.data.keyboard.Message == WM_KEYUP)
 			{
@@ -421,6 +421,10 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				SetPressState(STATE::LeftShift);
 				return -1;  //block key
 			}
+			//else if (keyCode == VK_F23)
+			//{
+			//	goto handleF23;
+			//}
 			else
 			{
 				//For keys that aren't in the sequence
@@ -466,6 +470,23 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				}
 			}
 		}
+		//if (keyCode == VK_F23)
+		//{
+		//	handleF23:
+		//	//out of sequence keypress to F23
+		//	#if DEBUG
+		//	DebugPrintf("Out-of-sequence F23 key press!\n");
+		//	#endif
+		//	InjectKeyUpAsync(VK_LSHIFT);
+		//	InjectKeyUpAsync(VK_LWIN);
+		//	InjectKeyDownAsync(VK_RCONTROL);
+		//	SetPressState(STATE::Idle);
+		//	SetReleaseState(STATE::F23);
+		//	CancelTimer();
+		//	leftShiftSuppressed = false;
+		//	leftWindowsSuppressed = false;
+		//	return -1;
+		//}
 	}
 	else if (released)
 	{
@@ -503,6 +524,16 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 		{
 			SetReleaseState(STATE::Idle);
 			return -1;  //block key
+		}
+		if (keyCode == VK_F23)
+		{
+			#if DEBUG
+			DebugPrintf("Out-of-sequence F23 key release!\n");
+			#endif
+			InjectKeyUpAsync(VK_RCONTROL);
+			InjectKeyUpAsync(VK_LSHIFT);
+			InjectKeyUpAsync(VK_LWIN);
+			return -1;
 		}
 	}
 
@@ -662,7 +693,7 @@ void RegisterVKeyCodes()
 	RegisterVKeyCode("VK_MBUTTON", 0x04);
 	RegisterVKeyCode("VK_XBUTTON1", 0x05);
 	RegisterVKeyCode("VK_XBUTTON2", 0x06);
-	RegisterVKeyCode("VK_BACK", 0x08);
+	RegisterVKeyCode("VK_BACK", 0x08); //Backspace
 	RegisterVKeyCode("VK_TAB", 0x09);
 	RegisterVKeyCode("VK_CLEAR", 0x0C);
 	RegisterVKeyCode("VK_RETURN", 0x0D);
@@ -670,7 +701,7 @@ void RegisterVKeyCodes()
 	RegisterVKeyCode("VK_CONTROL", 0x11);
 	RegisterVKeyCode("VK_MENU", 0x12);
 	RegisterVKeyCode("VK_PAUSE", 0x13);
-	RegisterVKeyCode("VK_CAPITAL", 0x14);
+	RegisterVKeyCode("VK_CAPITAL", 0x14); //Caps lock
 	RegisterVKeyCode("VK_KANA", 0x15);
 	RegisterVKeyCode("VK_IME_ON", 0x16);
 	RegisterVKeyCode("VK_JUNJA", 0x17);
@@ -683,8 +714,8 @@ void RegisterVKeyCodes()
 	RegisterVKeyCode("VK_ACCEPT", 0x1E);
 	RegisterVKeyCode("VK_MODECHANGE", 0x1F);
 	RegisterVKeyCode("VK_SPACE", 0x20);
-	RegisterVKeyCode("VK_PRIOR", 0x21);
-	RegisterVKeyCode("VK_NEXT", 0x22);
+	RegisterVKeyCode("VK_PRIOR", 0x21); //Page Up
+	RegisterVKeyCode("VK_NEXT", 0x22); //Page Down
 	RegisterVKeyCode("VK_END", 0x23);
 	RegisterVKeyCode("VK_HOME", 0x24);
 	RegisterVKeyCode("VK_LEFT", 0x25);
@@ -694,13 +725,13 @@ void RegisterVKeyCodes()
 	RegisterVKeyCode("VK_SELECT", 0x29);
 	RegisterVKeyCode("VK_PRINT", 0x2A);
 	RegisterVKeyCode("VK_EXECUTE", 0x2B);
-	RegisterVKeyCode("VK_SNAPSHOT", 0x2C);
+	RegisterVKeyCode("VK_SNAPSHOT", 0x2C); //Print Screen
 	RegisterVKeyCode("VK_INSERT", 0x2D);
 	RegisterVKeyCode("VK_DELETE", 0x2E);
 	RegisterVKeyCode("VK_HELP", 0x2F);
 	RegisterVKeyCode("VK_LWIN", 0x5B);
 	RegisterVKeyCode("VK_RWIN", 0x5C);
-	RegisterVKeyCode("VK_APPS", 0x5D);
+	RegisterVKeyCode("VK_APPS", 0x5D); //Menu Key
 	RegisterVKeyCode("VK_SLEEP", 0x5F);
 	RegisterVKeyCode("VK_NUMPAD0", 0x60);
 	RegisterVKeyCode("VK_NUMPAD1", 0x61);
@@ -712,12 +743,12 @@ void RegisterVKeyCodes()
 	RegisterVKeyCode("VK_NUMPAD7", 0x67);
 	RegisterVKeyCode("VK_NUMPAD8", 0x68);
 	RegisterVKeyCode("VK_NUMPAD9", 0x69);
-	RegisterVKeyCode("VK_MULTIPLY", 0x6A);
-	RegisterVKeyCode("VK_ADD", 0x6B);
+	RegisterVKeyCode("VK_MULTIPLY", 0x6A); //Numpad *
+	RegisterVKeyCode("VK_ADD", 0x6B); //Numpad +
 	RegisterVKeyCode("VK_SEPARATOR", 0x6C);
-	RegisterVKeyCode("VK_SUBTRACT", 0x6D);
-	RegisterVKeyCode("VK_DECIMAL", 0x6E);
-	RegisterVKeyCode("VK_DIVIDE", 0x6F);
+	RegisterVKeyCode("VK_SUBTRACT", 0x6D); //Numpad -
+	RegisterVKeyCode("VK_DECIMAL", 0x6E); //Numpad .
+	RegisterVKeyCode("VK_DIVIDE", 0x6F); //Numpad /
 	RegisterVKeyCode("VK_F1", 0x70);
 	RegisterVKeyCode("VK_F2", 0x71);
 	RegisterVKeyCode("VK_F3", 0x72);
@@ -751,7 +782,7 @@ void RegisterVKeyCodes()
 	RegisterVKeyCode("VK_NAVIGATION_ACCEPT", 0x8E);
 	RegisterVKeyCode("VK_NAVIGATION_CANCEL", 0x8F);
 	RegisterVKeyCode("VK_NUMLOCK", 0x90);
-	RegisterVKeyCode("VK_SCROLL", 0x91);
+	RegisterVKeyCode("VK_SCROLL", 0x91); //Scroll Lock
 	RegisterVKeyCode("VK_OEM_FJ_JISHO", 0x92);
 	RegisterVKeyCode("VK_OEM_FJ_MASSHOU", 0x93);
 	RegisterVKeyCode("VK_OEM_FJ_TOUROKU", 0x94);
@@ -761,8 +792,8 @@ void RegisterVKeyCodes()
 	RegisterVKeyCode("VK_RSHIFT", 0xA1);
 	RegisterVKeyCode("VK_LCONTROL", 0xA2);
 	RegisterVKeyCode("VK_RCONTROL", 0xA3);
-	RegisterVKeyCode("VK_LMENU", 0xA4);
-	RegisterVKeyCode("VK_RMENU", 0xA5);
+	RegisterVKeyCode("VK_LMENU", 0xA4); //Left Alt
+	RegisterVKeyCode("VK_RMENU", 0xA5); //Right Alt
 	RegisterVKeyCode("VK_BROWSER_BACK", 0xA6);
 	RegisterVKeyCode("VK_BROWSER_FORWARD", 0xA7);
 	RegisterVKeyCode("VK_BROWSER_REFRESH", 0xA8);
@@ -781,13 +812,13 @@ void RegisterVKeyCodes()
 	RegisterVKeyCode("VK_LAUNCH_MEDIA_SELECT", 0xB5);
 	RegisterVKeyCode("VK_LAUNCH_APP1", 0xB6);
 	RegisterVKeyCode("VK_LAUNCH_APP2", 0xB7);
-	RegisterVKeyCode("VK_OEM_1", 0xBA);
-	RegisterVKeyCode("VK_OEM_PLUS", 0xBB);
-	RegisterVKeyCode("VK_OEM_COMMA", 0xBC);
-	RegisterVKeyCode("VK_OEM_MINUS", 0xBD);
-	RegisterVKeyCode("VK_OEM_PERIOD", 0xBE);
-	RegisterVKeyCode("VK_OEM_2", 0xBF);
-	RegisterVKeyCode("VK_OEM_3", 0xC0);
+	RegisterVKeyCode("VK_OEM_1", 0xBA); //;
+	RegisterVKeyCode("VK_OEM_PLUS", 0xBB); //=
+	RegisterVKeyCode("VK_OEM_COMMA", 0xBC); //,
+	RegisterVKeyCode("VK_OEM_MINUS", 0xBD); //-
+	RegisterVKeyCode("VK_OEM_PERIOD", 0xBE); //.
+	RegisterVKeyCode("VK_OEM_2", 0xBF); ///
+	RegisterVKeyCode("VK_OEM_3", 0xC0); //`
 	RegisterVKeyCode("VK_GAMEPAD_A", 0xC3);
 	RegisterVKeyCode("VK_GAMEPAD_B", 0xC4);
 	RegisterVKeyCode("VK_GAMEPAD_X", 0xC5);
@@ -812,10 +843,10 @@ void RegisterVKeyCodes()
 	RegisterVKeyCode("VK_GAMEPAD_RIGHT_THUMBSTICK_DOWN", 0xD8);
 	RegisterVKeyCode("VK_GAMEPAD_RIGHT_THUMBSTICK_RIGHT", 0xD9);
 	RegisterVKeyCode("VK_GAMEPAD_RIGHT_THUMBSTICK_LEFT", 0xDA);
-	RegisterVKeyCode("VK_OEM_4", 0xDB);
-	RegisterVKeyCode("VK_OEM_5", 0xDC);
-	RegisterVKeyCode("VK_OEM_6", 0xDD);
-	RegisterVKeyCode("VK_OEM_7", 0xDE);
+	RegisterVKeyCode("VK_OEM_4", 0xDB); //[
+	RegisterVKeyCode("VK_OEM_5", 0xDC); //\ 
+	RegisterVKeyCode("VK_OEM_6", 0xDD); //]
+	RegisterVKeyCode("VK_OEM_7", 0xDE); //'
 	RegisterVKeyCode("VK_OEM_8", 0xDF);
 	RegisterVKeyCode("VK_OEM_AX", 0xE1);
 	RegisterVKeyCode("VK_OEM_102", 0xE2);
@@ -846,6 +877,7 @@ void RegisterVKeyCodes()
 	RegisterVKeyCode("VK_NONAME", 0xFC);
 	RegisterVKeyCode("VK_PA1", 0xFD);
 	RegisterVKeyCode("VK_OEM_CLEAR", 0xFE);
+	RegisterVKeyCode("0xFF", 0xFF);
 }
 
 const char* GetVKeyName(int key)
