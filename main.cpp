@@ -117,7 +117,11 @@ HHOOK globalKeyboardHook;
 UINT_PTR reattachTimer;
 #endif
 
+UINT_PTR activeTimer = 0;
+UINT_PTR activeReleaseTimer = 0;
+
 DWORD releaseSequenceTimestamp;
+
 #if HANDLE_INVALID
 DWORD outOfPressSequenceTimestamp;
 DWORD outOfReleaseSequenceTimestamp;
@@ -128,6 +132,7 @@ bool outOfPressSequence = false;
 bool outOfPressSequenceSuppressLeftShift = false;
 bool outOfPressSequenceSuppressLeftWindows = false;
 bool outOfReleaseSequence = false;
+int pendingInjectedLeftShiftRelease = 0;
 #endif //HANDLE_INVALID
 
 bool leftWindowsSuppressed;
@@ -190,21 +195,31 @@ void DebugPrintf(const char* format, ...)
 void InjectCopilotKeyDown()
 {
 	//proper sequence:
+	PostMessage(mainWindow, WM_USER, VK_LWIN, 2);
+	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
+	PostMessage(mainWindow, WM_USER, VK_F23, 2);
+
+	//invalid sequence: LSHIFT LWIN F23
+	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
+	
+	//PostMessage(mainWindow, WM_USER, VK_F23, 2);
 	//PostMessage(mainWindow, WM_USER, VK_LWIN, 2);
 	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
-	//PostMessage(mainWindow, WM_USER, VK_F23, 2);
 
-	//invalid sequence: LSHIFT F23
-	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
 	//PostMessage(mainWindow, WM_USER, VK_LWIN, 2);
-	PostMessage(mainWindow, WM_USER, VK_F23, 2);
+	//PostMessage(mainWindow, WM_USER, VK_F23, 2);
+	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
 }
 void InjectCopilotKeyUp()
 {
 	//proper sequence:
+	//PostMessage(mainWindow, WM_USER, VK_F23, 3);
+	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 3);
+	//PostMessage(mainWindow, WM_USER, VK_LWIN, 3);
+
 	PostMessage(mainWindow, WM_USER, VK_F23, 3);
-	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 3);
-	PostMessage(mainWindow, WM_USER, VK_LWIN, 3);
+	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 3);
+	//PostMessage(mainWindow, WM_USER, VK_LWIN, 3);
 }
 #endif //TEST
 
@@ -409,7 +424,6 @@ void CALLBACK TimerProc(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 	ReplaySuppressedKeys();
 }
 
-UINT_PTR activeTimer = 0;
 void EnsureTimer()
 {
 	if (activeTimer == 0)
@@ -428,6 +442,36 @@ void CancelTimer()
 		activeTimer = 0;
 		#if DEBUG
 		DebugPrintf("    Timer cancelled\n");
+		#endif	
+	}
+}
+
+void CALLBACK ReleaseTimerProc(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
+{
+	#if DEBUG
+	DebugPrintf("    %d ReleaseTimerProc (took too long to see all three release keys, should not happen)\n", MyGetTickCount());
+	#endif
+	//TODO - logic for ReleaseTimerProc - If F23 is released but nothing happens after that, release LSHFIT and LWIN??
+}
+
+void EnsureReleaseTimer()
+{
+	if (activeReleaseTimer == 0)
+	{
+		activeReleaseTimer = SetTimer(mainWindow, 3, KeyChordTimerTimeout, ReleaseTimerProc);
+		#if DEBUG
+		DebugPrintf("    Release timer set\n");
+		#endif	
+	}
+}
+void CancelReleaseTimer()
+{
+	if (activeReleaseTimer != 0)
+	{
+		KillTimer(mainWindow, activeReleaseTimer);
+		activeReleaseTimer = 0;
+		#if DEBUG
+		DebugPrintf("    Release timer cancelled\n");
 		#endif	
 	}
 }
@@ -494,6 +538,28 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 
 	if (injected)
 	{
+		#if HANDLE_INVALID
+		if (outOfPressSequence && keyCode == VK_LSHIFT)
+		{
+			if (pendingInjectedLeftShiftRelease == 2)
+			{
+				#if DEBUG
+				DebugPrintf("    Special: An out-of-sequence F23 press requested that Left Shift be released.\n"
+					"      But another press to Left Shift happened before the key release was handled.\n"
+					"      Accepting the Left Shift press and rejecting the injected Left Shift release.\n");
+				#endif
+				pendingInjectedLeftShiftRelease = 0;
+				return -1;
+			}
+			else if (pendingInjectedLeftShiftRelease == 1)
+			{
+				#if DEBUG
+				DebugPrintf("    Injected Left shift release was accepted.\n");
+				#endif
+				pendingInjectedLeftShiftRelease = 0;
+			}
+		}
+		#endif //HANDLE_INVALID
 		return CallNextHookEx(NULL, code, wParam, lParam);
 	}
 	
@@ -530,8 +596,11 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			return -1;
 		}
 		#endif //TEST
-		////any key press ends an out-of-sequence key release sequence
-		//outOfReleaseSequence = false;
+		
+		#if HANDLE_INVALID
+		//any key press ends an out-of-sequence key release sequence
+		outOfReleaseSequence = false;
+		#endif //HANDLE_INVALID
 
 		if (keyCode == VK_LWIN)
 		{
@@ -542,7 +611,12 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			#if HANDLE_INVALID
 			if (outOfPressSequence && outOfPressSequenceSuppressLeftWindows)
 			{
-				//don't replay left windows the next time the sequence fails
+				#if DEBUG
+				DebugPrintf("    Left windows rejected because it was within 30ms of out-of-sequence F23\n");
+				#endif
+				SetPressState(STATE::Idle);
+				outOfPressSequenceSuppressLeftWindows = false;
+				//don't replay left windows key
 				leftWindowsSuppressed = false;
 			}
 			#endif //HANDLE_INVALID
@@ -555,6 +629,17 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			{
 				leftShiftSuppressed = true;
 				SetPressState(STATE::LeftShift);
+				#if HANDLE_INVALID
+				if (outOfPressSequence && outOfPressSequenceSuppressLeftShift)
+				{
+					#if DEBUG
+					DebugPrintf("    Left shift rejected because it was within 30ms of out-of-sequence F23\n");
+					#endif
+					outOfPressSequenceSuppressLeftShift = false;
+					//don't replay left windows key
+					leftShiftSuppressed = false;
+				}
+				#endif
 				return -1;  //block LSHIFT key
 			}
 			#if HANDLE_INVALID
@@ -562,7 +647,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			{
 				//Left Windows -> F23 breaks the sequence
 				#if DEBUG
-				DebugPrintf("Out-of-sequence key press: LWIN -> F23\n");
+				DebugPrintf("  Out-of-sequence key press: LWIN -> F23\n");
 				#endif
 				//keep Left Windows Key suppressed (don't replay it later)
 				if (leftWindowsSuppressed)
@@ -571,6 +656,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				}
 				outOfPressSequenceTimestamp = GetTickCount();
 				outOfPressSequence = true;
+				pendingInjectedLeftShiftRelease = 0;
 				outOfPressSequenceSuppressLeftShift = false;
 				//Possibility of bad sequence: LShift LWin F23 or LWin F23 LShift
 				//Was LShift last pressed within 30ms?  (LShift LWin F23)
@@ -591,6 +677,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 						#endif
 						//send Left Shift Released to cancel the prior keypress
 						InjectKeyUpAsync(VK_LSHIFT);
+						pendingInjectedLeftShiftRelease = 1;
 						//Reset leftShiftDown flag to false to avoid stuck shift key
 						SetLeftShiftDown(false);
 					}
@@ -600,6 +687,9 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 					//Possibility of LWin F23 LShift (in the future)
 					//Suppress Left Shift if it is pressed with 30ms
 					outOfPressSequenceSuppressLeftShift = true;
+					#if DEBUG
+					DebugPrintf("    Left shift wasn't pressed, next Left shift within 30ms will be suppressed\n");
+					#endif
 				}
 				SetPressState(STATE::Idle);
 				SetReleaseState(STATE::F23);
@@ -659,7 +749,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 		{
 			//Out of sequence keypress to F23
 			#if DEBUG
-			DebugPrintf("Out-of-sequence key press: F23\n");
+			DebugPrintf("  Out-of-sequence key press: F23\n");
 			#endif
 			//possible sequences handled here:
 			//F23
@@ -678,6 +768,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 
 			outOfPressSequenceTimestamp = GetTickCount();
 			outOfPressSequence = true;
+			pendingInjectedLeftShiftRelease = 0;
 			outOfPressSequenceSuppressLeftShift = false;
 			//To handle the cases where LShift comes before F23:
 			//left shift may have been pressed with 30ms, if it was, release left shift unless it was held down
@@ -698,6 +789,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 					#endif
 					//send Left Shift Released to cancel the prior keypress
 					InjectKeyUpAsync(VK_LSHIFT);
+					pendingInjectedLeftShiftRelease = 1;
 					//Reset leftShiftDown flag to false to avoid stuck shift key
 					SetLeftShiftDown(false);
 				}
@@ -707,6 +799,9 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				//Possibility of LShift in the future as part of the sequence
 				//Suppress Left Shift if it is pressed with 30ms
 				outOfPressSequenceSuppressLeftShift = true;
+				#if DEBUG
+				DebugPrintf("    Left shift wasn't pressed, next Left shift within 30ms will be suppressed\n");
+				#endif
 			}
 			SetPressState(STATE::Idle);
 			SetReleaseState(STATE::F23);
@@ -719,18 +814,28 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 
 		if (keyCode == VK_LSHIFT)
 		{
-			//Left Shift is tracked by the program in order to detect the invalid sequence LSHIFT F23
-			SetLeftShiftDown(true);
-			#if DEBUG
-			if (leftShiftDown2)
-			{
-				DebugPrintf("    %d Left shift pressed while already held down\n", leftShiftTimestamp);
-			}
-			#endif //DEBUG
 			if (outOfPressSequence && outOfPressSequenceSuppressLeftShift)
 			{
+				#if DEBUG
+				DebugPrintf("    Left shift rejected because it was within 30ms of out-of-sequence F23\n");
+				#endif
 				outOfPressSequenceSuppressLeftShift = false;
 				return -1;
+			}
+			if (outOfPressSequence && pendingInjectedLeftShiftRelease == 1)
+			{
+				#if DEBUG
+				DebugPrintf("    Left shift pressed while injected release not yet handled\n");
+				#endif
+				pendingInjectedLeftShiftRelease = 2;
+			}
+			//Left Shift is tracked by the program in order to detect the invalid sequence LSHIFT F23
+			SetLeftShiftDown(true);
+			if (leftShiftDown2)
+			{
+				#if DEBUG
+				DebugPrintf("    Left shift pressed while already held down\n");
+				#endif
 			}
 		}
 		//Allow other keys to force-break an invalid sequence
@@ -757,6 +862,10 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 
 		if (keyCode == VK_F23 && releaseState == STATE::F23)
 		{
+			#if HANDLE_INVALID
+			SetPressState(STATE::Idle);
+			CancelTimer();
+			#endif //HANDLE_INVALID
 			SetReleaseState(STATE::LeftShift);
 			InjectKeyUpAsync(VK_RCONTROL);
 			releaseSequenceTimestamp = GetTickCount();
@@ -799,7 +908,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 		{
 			//Out-of-sequence F23 key release
 			#if DEBUG
-			DebugPrintf("Out-of-sequence F23 key release!\n");
+			DebugPrintf("  Out-of-sequence F23 key release\n");
 			#endif
 			//Possible sequences:
 			//F23 LShift LWin (correct sequence)
@@ -812,7 +921,9 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			//LShift F23 LWin
 			//LWin F23
 			//LWin LShift F23
-			//So far, only the correct release sequence has been seen
+			//So far, only the correct release sequence has been seen, not any invalid sequences
+
+
 
 			//TODO: come up with rules for degenerate cases, for now just release all the keys
 			InjectKeyUpAsync(VK_RCONTROL);
