@@ -142,7 +142,7 @@ namespace NoCopilotKey_Installer
                 try
                 {
                     subkey.SetValue("DisplayName", "NoCopilotKey");
-                    subkey.SetValue("DisplayVersion", "1.0.2.0");
+                    subkey.SetValue("DisplayVersion", "1.0.3.0");
                     subkey.SetValue("Publisher", "www.dwedit.org");
                     subkey.SetValue("URLInfoAbout", "https://github.com/Dwedit/NoCopilotKey");
                     subkey.SetValue("UninstallString", "\"" + installerExePath + "\" --uninstall");

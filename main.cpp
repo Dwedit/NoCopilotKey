@@ -10,7 +10,7 @@ typedef uint32_t u32;
 
 //Test mode: Make backquote act as copilot key  (for testing on a keyboard which doesn't have a copilot key)
 //Also allows testing invalid sequences
-#define TEST 1
+#define TEST 0
 
 //Debug mode: adds a console and logging (enabled for debug builds)
 #define DEBUG _DEBUG
@@ -247,7 +247,7 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_USER:
 		{
-			bool isRelease = 1 == (lParam & 1);
+			bool isRelease = 0 != (lParam & 1);
 			if (isRelease)
 			{
 				SetKeyUp(&input, (DWORD)wParam);
@@ -383,10 +383,12 @@ void CALLBACK TimerHandlerToReattachHook(HWND hWnd, UINT uMsg, UINT_PTR idEvent,
 #if HANDLE_INVALID
 void SetLeftShiftDown(bool isDown)
 {
+	#if DEBUG
 	if (isDown != leftShiftDown)
 	{
 		DebugPrintf("    Left shift changed: %d -> %d\n", leftShiftDown, isDown);
 	}
+	#endif //DEBUG
 	leftShiftDown2 = leftShiftDown;
 	leftShiftDown = isDown;
 	leftShiftTimestamp2 = leftShiftTimestamp2;
