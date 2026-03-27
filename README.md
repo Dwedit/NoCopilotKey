@@ -65,6 +65,10 @@ Then when you release the Copilot key:
 
 # Version History
 
+1.0.3.0
+ * Now supports broken key sequences (such as Left Windows Key missing, or Left Shift pressed before Left Windows Key)
+ * Keyboard hook reattaches every second to ensure that other applications (such as Remote Desktop Connection) do not override the hook
+
 1.0.2.0
  * No longer calls SendInput from within the hook code, improving responsiveness
  * Quick presses of Windows Key and another key should now be in the correct order
