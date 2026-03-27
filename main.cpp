@@ -27,6 +27,9 @@ typedef uint32_t u32;
 //Whether to reinstall the keyboard hook every 1 second (to override programs which install their own key hooks, such as Remote Desktop Connection)
 #define REINSTALL_HOOK 1
 
+//Whether to use Raw Input to look for keys that got past the keyboard hook (useless)
+#define USE_RAW_INPUT 0
+
 //The timeout for the three key sequence - If it takes longer than this, don't treat it as a copilot key press/release
 const int KeyChordTimeout = 30;
 
@@ -118,7 +121,6 @@ UINT_PTR reattachTimer;
 #endif
 
 UINT_PTR activeTimer = 0;
-UINT_PTR activeReleaseTimer = 0;
 
 DWORD releaseSequenceTimestamp;
 
@@ -199,27 +201,23 @@ void InjectCopilotKeyDown()
 	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
 	PostMessage(mainWindow, WM_USER, VK_F23, 2);
 
-	//invalid sequence: LSHIFT LWIN F23
+	//example invalid sequence:
 	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
-	
 	//PostMessage(mainWindow, WM_USER, VK_F23, 2);
-	//PostMessage(mainWindow, WM_USER, VK_LWIN, 2);
-	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
 
+	//another example invalid sequence:
+	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
 	//PostMessage(mainWindow, WM_USER, VK_LWIN, 2);
 	//PostMessage(mainWindow, WM_USER, VK_F23, 2);
-	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
 }
 void InjectCopilotKeyUp()
 {
 	//proper sequence:
-	//PostMessage(mainWindow, WM_USER, VK_F23, 3);
-	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 3);
-	//PostMessage(mainWindow, WM_USER, VK_LWIN, 3);
-
 	PostMessage(mainWindow, WM_USER, VK_F23, 3);
-	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 3);
-	//PostMessage(mainWindow, WM_USER, VK_LWIN, 3);
+	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 3);
+	PostMessage(mainWindow, WM_USER, VK_LWIN, 3);
+	
+	//No known invalid sequences have been seen so far?
 }
 #endif //TEST
 
@@ -268,6 +266,7 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			SendInput(1, &input, sizeof(input));
 			return 0;
 		}
+		#if USE_RAW_INPUT
 	case WM_INPUT:
 		{
 			//Raw Input isn't really raw, it's been processed by low level keyboard hooks first
@@ -293,6 +292,7 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 		}
 		return 0;
+		#endif
 	}
 	return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
@@ -342,6 +342,7 @@ int APIENTRY MyWinMain()
 	ATOM windowClassAtom = RegisterClassW(&wndClass);
 	mainWindow = CreateWindowExW(0, wndClass.lpszClassName, L"NoCopilotKey", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, NULL, NULL);
 
+	#if USE_RAW_INPUT
 	RAWINPUTDEVICE rawInputDevice = {};
 	rawInputDevice.usUsagePage = 1;
 	rawInputDevice.usUsage = 6;
@@ -352,6 +353,7 @@ int APIENTRY MyWinMain()
 	{
 		BOOL okay = RegisterRawInputDevices(&rawInputDevice, 1, sizeof(RAWINPUTDEVICE));
 	}
+	#endif
 
 	globalKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, &MyKeyboardProc, module, 0);
 	int lastError = GetLastError();
@@ -442,36 +444,6 @@ void CancelTimer()
 		activeTimer = 0;
 		#if DEBUG
 		DebugPrintf("    Timer cancelled\n");
-		#endif	
-	}
-}
-
-void CALLBACK ReleaseTimerProc(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
-{
-	#if DEBUG
-	DebugPrintf("    %d ReleaseTimerProc (took too long to see all three release keys, should not happen)\n", MyGetTickCount());
-	#endif
-	//TODO - logic for ReleaseTimerProc - If F23 is released but nothing happens after that, release LSHFIT and LWIN??
-}
-
-void EnsureReleaseTimer()
-{
-	if (activeReleaseTimer == 0)
-	{
-		activeReleaseTimer = SetTimer(mainWindow, 3, KeyChordTimerTimeout, ReleaseTimerProc);
-		#if DEBUG
-		DebugPrintf("    Release timer set\n");
-		#endif	
-	}
-}
-void CancelReleaseTimer()
-{
-	if (activeReleaseTimer != 0)
-	{
-		KillTimer(mainWindow, activeReleaseTimer);
-		activeReleaseTimer = 0;
-		#if DEBUG
-		DebugPrintf("    Release timer cancelled\n");
 		#endif	
 	}
 }
@@ -873,29 +845,13 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 		}
 		if (keyCode == VK_LSHIFT && releaseState == STATE::LeftShift)
 		{
-			if (GetTickCount() - releaseSequenceTimestamp < KeyChordTimeout)
-			{
-				SetReleaseState(STATE::LeftWindows);
-				return -1;  //block LSHIFT key release
-			}
-			else
-			{
-				//sequence broken by taking too long to release LSHIFT after F23  (should not happen, has not been seen)
-				SetReleaseState(STATE::Idle);
-			}
+			SetReleaseState(STATE::LeftWindows);
+			return -1;  //block LSHIFT key release
 		}
 		if (keyCode == VK_LWIN && releaseState == STATE::LeftWindows)
 		{
-			if (GetTickCount() - releaseSequenceTimestamp < KeyChordTimeout)
-			{
-				SetReleaseState(STATE::Idle);
-				return -1;  //block LWIN key release
-			}
-			else
-			{
-				//sequence broken by taking too long to release LWIN after LSHIFT (should not happen, has not been seen)
-				SetReleaseState(STATE::Idle);
-			}
+			SetReleaseState(STATE::Idle);
+			return -1;  //block LWIN key release
 		}
 
 		#if HANDLE_INVALID
@@ -910,25 +866,12 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			#if DEBUG
 			DebugPrintf("  Out-of-sequence F23 key release\n");
 			#endif
-			//Possible sequences:
-			//F23 LShift LWin (correct sequence)
-			//F23 LWin LShift
-			//F23 LShift
-			//F23 LWin
-			//F23
-			//LShift F23
-			//LShift LWin F23
-			//LShift F23 LWin
-			//LWin F23
-			//LWin LShift F23
-			//So far, only the correct release sequence has been seen, not any invalid sequences
-
-
-
-			//TODO: come up with rules for degenerate cases, for now just release all the keys
+			//This only happens when there is an F23 release without a corresponding handled F23 press
+			//We don't have a good way to handle this, so just treat all keys as if they are being released.
 			InjectKeyUpAsync(VK_RCONTROL);
 			InjectKeyUpAsync(VK_LSHIFT);
 			InjectKeyUpAsync(VK_LWIN);
+			InjectKeyUpAsync(VK_F23);
 			return -1;
 		}
 		#endif //HANDLE_INVALID
