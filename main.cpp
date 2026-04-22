@@ -7,6 +7,7 @@ typedef uint32_t u32;
 #include <io.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <aclapi.h>
 
 //Test mode: Make backquote act as copilot key  (for testing on a keyboard which doesn't have a copilot key)
 //Also allows testing invalid sequences
@@ -29,6 +30,9 @@ typedef uint32_t u32;
 
 //Whether to use Raw Input to look for keys that got past the keyboard hook (useless)
 #define USE_RAW_INPUT 0
+
+//Whether to watch the active window
+#define WATCH_ACTIVE_WINDOW 1
 
 //The timeout for the three key sequence - If it takes longer than this, don't treat it as a copilot key press/release
 const int KeyChordTimeout = 30;
@@ -112,6 +116,16 @@ STATE releaseState;
 LPWSTR commandLine;
 int argc;
 PWSTR* argv;
+
+#if WATCH_ACTIVE_WINDOW
+HWND activeWindow;
+bool activeWindowIsAdmin = false;
+bool weAreAdmin = false;
+
+HWINEVENTHOOK systemForegroundHook;
+HWINEVENTHOOK systemMinimizeEndHook;
+HWINEVENTHOOK eventObjectFocusHook;
+#endif
 
 HWND mainWindow;
 HHOOK globalKeyboardHook;
@@ -263,7 +277,14 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				input.ki.dwExtraInfo = 0x12345678;
 			}
 			#endif //TEST
-			SendInput(1, &input, sizeof(input));
+			UINT inputsSent = SendInput(1, &input, sizeof(input));
+			#if DEBUG
+			if (inputsSent == 0)
+			{
+				DebugPrintf("SendInput failed\n");
+			}
+			#endif
+
 			return 0;
 		}
 		#if USE_RAW_INPUT
@@ -275,12 +296,12 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			data.header.dwSize = sizeof(RAWINPUTHEADER);
 			UINT size = sizeof(data);
 			GetRawInputData(handle, RID_INPUT, &data, &size, sizeof(RAWINPUTHEADER));
-			//#if DEBUG
-			//const char* pressString = "Other message";
-			//if (data.data.keyboard.Message == WM_KEYUP) pressString = "released";
-			//if (data.data.keyboard.Message == WM_KEYDOWN) pressString = "pressed";
-			//DebugPrintf("Raw Input: %s %s\n", GetVKeyName(data.data.keyboard.VKey), pressString);
-			//#endif //DEBUG
+			#if DEBUG
+			const char* pressString = "Other message";
+			if (data.data.keyboard.Message == WM_KEYUP) pressString = "released";
+			if (data.data.keyboard.Message == WM_KEYDOWN) pressString = "pressed";
+			DebugPrintf("Raw Input: %s %s\n", GetVKeyName(data.data.keyboard.VKey), pressString);
+			#endif //DEBUG
 			if (data.data.keyboard.Message == WM_KEYUP)
 			{
 				//If F23 key is detected as being released here, then somehow it didn't get rejected by the hook
@@ -299,6 +320,11 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 #if REINSTALL_HOOK
 void CALLBACK TimerHandlerToReattachHook(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
+#endif
+
+#if WATCH_ACTIVE_WINDOW
+void CALLBACK MyWinEventHookProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD idEventThread, DWORD dwmsEventTime);
+bool IsWindowAdmin(HWND hwnd);
 #endif
 
 int APIENTRY MyWinMain()
@@ -362,6 +388,19 @@ int APIENTRY MyWinMain()
 	reattachTimer = SetTimer(mainWindow, 2, 1000, &TimerHandlerToReattachHook);
 	#endif //REINSTALL_HOOK
 
+	#if WATCH_ACTIVE_WINDOW
+	//eventLastTickCount = GetTickCount() - 10;
+	weAreAdmin = IsWindowAdmin(mainWindow);
+	if (!weAreAdmin)
+	{
+		activeWindow = mainWindow; //start with a window that can't possibly be the foreground window
+		systemForegroundHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, NULL, MyWinEventHookProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+		systemMinimizeEndHook = SetWinEventHook(EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZEEND, NULL, MyWinEventHookProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+		eventObjectFocusHook = SetWinEventHook(EVENT_OBJECT_FOCUS, EVENT_OBJECT_FOCUS, NULL, MyWinEventHookProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+		MyWinEventHookProc(NULL, EVENT_SYSTEM_FOREGROUND, NULL, 0, 0, 0, 0);
+	}
+	#endif //WATCH_ACTIVE_WINDOW
+
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0) > 0)
 	{
@@ -379,6 +418,97 @@ void CALLBACK TimerHandlerToReattachHook(HWND hWnd, UINT uMsg, UINT_PTR idEvent,
 	globalKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, &MyKeyboardProc, GetModuleHandle(NULL), 0);
 }
 #endif //REINSTALL_HOOK
+
+#if WATCH_ACTIVE_WINDOW
+void IsAdminChanged()
+{
+	if (!activeWindowIsAdmin)
+	{
+		if (rightCtrlDown)
+		{
+			InjectKeyUpAsync(VK_RCONTROL);
+			InjectKeyUpAsync(VK_LSHIFT);
+			InjectKeyUpAsync(VK_LWIN);
+			InjectKeyUpAsync(VK_F23);
+		}
+	}
+	else
+	{
+		if (rightCtrlDown)
+		{
+			#if DEBUG
+			DebugPrintf("Right ctrl is stuck due to switching to admin window\n");
+			#endif
+		}
+	}
+}
+
+bool IsWindowAdmin(HWND hwnd)
+{
+	bool isAdmin = false;
+	DWORD processId = 0;
+	DWORD threadId = GetWindowThreadProcessId(activeWindow, &processId);
+	HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+	if (hProcess)
+	{
+		HANDLE tokenHandle = NULL;
+		BOOL okay = OpenProcessToken(hProcess, TOKEN_QUERY, &tokenHandle);
+		if (tokenHandle)
+		{
+			TOKEN_ELEVATION_TYPE elevationType = {};
+			DWORD bytesRead = 0;
+			okay = GetTokenInformation(tokenHandle, TokenElevationType, &elevationType, sizeof(elevationType), &bytesRead);
+			CloseHandle(tokenHandle);
+			if (elevationType == TokenElevationTypeFull)
+			{
+				isAdmin = true;
+			}
+		}
+		CloseHandle(hProcess);
+	}
+	return isAdmin;
+}
+
+void DoPollForegroundWindow()
+{
+	HWND foregroundWindow = GetForegroundWindow();
+	if (foregroundWindow != activeWindow)
+	{
+		#if DEBUG
+		DebugPrintf("Active Window Changed: %p -> %p\n", activeWindow, foregroundWindow);
+		#endif
+		activeWindow = foregroundWindow;
+		if (activeWindow != NULL)
+		{
+			bool activeWindowWasAdmin = activeWindowIsAdmin;
+			activeWindowIsAdmin = IsWindowAdmin(activeWindow);
+			if (activeWindowIsAdmin != activeWindowWasAdmin)
+			{
+				#if DEBUG
+				if (activeWindowIsAdmin)
+				{
+					DebugPrintf("Admin Window\n");
+				}
+				else
+				{
+					DebugPrintf("No longer Admin Window\n");
+				}
+				#endif
+				IsAdminChanged();
+			}
+			#if REINSTALL_HOOK
+			UnhookWindowsHookEx(globalKeyboardHook);
+			globalKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, &MyKeyboardProc, GetModuleHandle(NULL), 0);
+			#endif
+		}
+	}
+}
+
+void CALLBACK MyWinEventHookProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD idEventThread, DWORD dwmsEventTime)
+{
+	DoPollForegroundWindow();
+}
+#endif //WATCH_ACTIVE_WINDOW
 
 #if HANDLE_INVALID
 void SetLeftShiftDown(bool isDown)
