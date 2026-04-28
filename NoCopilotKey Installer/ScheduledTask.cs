@@ -125,7 +125,7 @@ namespace NoCopilotKey_Installer
                     execAction.Path = exePath;
                     var principal = taskDefinition.Principal;
                     principal.RunLevel = _TASK_RUNLEVEL.TASK_RUNLEVEL_HIGHEST;
-                    principal.GroupId = "Users";
+                    principal.GroupId = "S-1-5-32-545"; //"Users"
                     var triggers = taskDefinition.Triggers;
                     var trigger = triggers.Create(_TASK_TRIGGER_TYPE2.TASK_TRIGGER_LOGON);
                     var taskSettings = taskDefinition.Settings;
