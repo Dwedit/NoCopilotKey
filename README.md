@@ -65,6 +65,10 @@ Then when you release the Copilot key:
 
 # Version History
 
+1.0.3.1
+ * When running as non-admin, held ctrl key could get stuck if you switched to an admin window before releasing the key.  Now held ctrl is automatically unstuck the next time you switch back to a non-admin window.
+ * Fix installation on non-English systems
+
 1.0.3.0
  * Now supports broken key sequences (such as Left Windows Key missing, or Left Shift pressed before Left Windows Key)
  * Keyboard hook reattaches every second to ensure that other applications (such as Remote Desktop Connection) do not override the hook
