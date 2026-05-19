@@ -211,25 +211,25 @@ void DebugPrintf(const char* format, ...)
 void InjectCopilotKeyDown()
 {
 	//proper sequence:
-	PostMessage(mainWindow, WM_USER, VK_LWIN, 2);
-	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
-	PostMessage(mainWindow, WM_USER, VK_F23, 2);
+	PostMessage(mainWindow, WM_USER, VK_LWIN, 8);
+	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 8);
+	PostMessage(mainWindow, WM_USER, VK_F23, 8);
 
 	//example invalid sequence:
-	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
-	//PostMessage(mainWindow, WM_USER, VK_F23, 2);
+	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 8);
+	//PostMessage(mainWindow, WM_USER, VK_F23, 8);
 
 	//another example invalid sequence:
-	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 2);
-	//PostMessage(mainWindow, WM_USER, VK_LWIN, 2);
-	//PostMessage(mainWindow, WM_USER, VK_F23, 2);
+	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 8);
+	//PostMessage(mainWindow, WM_USER, VK_LWIN, 8);
+	//PostMessage(mainWindow, WM_USER, VK_F23, 8);
 }
 void InjectCopilotKeyUp()
 {
 	//proper sequence:
-	PostMessage(mainWindow, WM_USER, VK_F23, 3);
-	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 3);
-	PostMessage(mainWindow, WM_USER, VK_LWIN, 3);
+	PostMessage(mainWindow, WM_USER, VK_F23, 9);
+	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 9);
+	PostMessage(mainWindow, WM_USER, VK_LWIN, 9);
 	
 	//No known invalid sequences have been seen so far?
 }
@@ -243,6 +243,14 @@ void InjectKeyDownAsync(DWORD vKey)
 	PostMessage(mainWindow, WM_USER, vKey, 0);
 }
 
+void InjectKeyDownAsync2(DWORD vKey, bool isExtendedKey)
+{
+	#if DEBUG
+	DebugPrintf("    %d InjectKeyDownAsync2 %s\n", MyGetTickCount(), GetVKeyName(vKey));
+	#endif
+	PostMessage(mainWindow, WM_USER, vKey, 2 + (isExtendedKey ? 4 : 0));
+}
+
 void InjectKeyUpAsync(DWORD vKey)
 {
 	#if DEBUG
@@ -251,8 +259,68 @@ void InjectKeyUpAsync(DWORD vKey)
 	PostMessage(mainWindow, WM_USER, vKey, 1);
 }
 
+void InjectKeyUpAsync2(DWORD vKey, bool isExtendedKey)
+{
+	#if DEBUG
+	DebugPrintf("    %d InjectKeyUpAsync2 %s\n", MyGetTickCount(), GetVKeyName(vKey));
+	#endif
+	PostMessage(mainWindow, WM_USER, vKey, 1 + 2 + (isExtendedKey ? 4 : 0));
+}
+
 void SetKeyDown(INPUT* input, DWORD VKEY);
 void SetKeyUp(INPUT* input, DWORD VKEY);
+void SetKeyDown2(INPUT* input, DWORD VKEY, bool isExtendedKey);
+void SetKeyUp2(INPUT* input, DWORD VKEY, bool isExtendedKey);
+
+//Converts a VKEY to a scancode, for when you don't have the extended key flag available
+UINT VKeyToScanCode(WORD vkey)
+{
+	UINT result = MapVirtualKeyExW(vkey, MAPVK_VK_TO_VSC_EX, NULL);
+	//These keys: Page Up, Page Down, End, Home, Left, Up, Right, Down, Insert, Delete
+	//are also found on the numpad, so MapVirtualKeyExW will not set the extended key flag for those by default.
+	//We want to set the extended key flag for those (and force the non-numpad version)
+	if ((vkey >= VK_PRIOR && vkey <= VK_DOWN) ||
+		vkey == VK_INSERT || vkey == VK_DELETE ||
+		vkey == VK_NUMLOCK || vkey == VK_RSHIFT)
+	{
+		result |= 0xE000;
+	}
+	return result;
+}
+
+//Converts a VKEY to a scancode, for when you do have the extended key flag available
+UINT VKeyToScanCode2(WORD vkey, int isExtended)
+{
+	UINT result = VKeyToScanCode(vkey);
+	//Force extended key for Numpad Enter
+	if (vkey == VK_RETURN && isExtended)
+	{
+		result |= 0xE000;
+	}
+	//Change Sysreq key from Print Screen key back to Sysreq key
+	if (vkey == VK_SNAPSHOT && isExtended)
+	{
+		result = 0xE037;
+	}
+	//Change Pause key back
+	if (vkey == VK_PAUSE && !isExtended)
+	{
+		result = 0x45;
+	}
+	//When pressing the numpad keys with numlock off, extended key flag is normally off
+	//But my function VKeyToScanCode above forces the extended key flag on (not pressing the numpad version)
+	//Force the extended key flag off, and return them to numpad versions
+	if (!isExtended)
+	{
+		if ((vkey >= VK_PRIOR && vkey <= VK_DOWN) ||
+			vkey == VK_INSERT || vkey == VK_DELETE ||
+			vkey == VK_NUMLOCK || vkey == VK_RSHIFT) //page up, page down, end, home, left, up, right, down, insert, delete
+		{
+			result &= 0xFF;
+		}
+	}
+	return result;
+}
 
 LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -262,16 +330,33 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_USER:
 		{
 			bool isRelease = 0 != (lParam & 1);
+			bool haveExtendedKey = 0 != (lParam & 2);
+			bool isExtendedKey = 0 != (lParam & 4);
+			bool isDebugKey = 0 != (lParam & 8);
 			if (isRelease)
 			{
-				SetKeyUp(&input, (DWORD)wParam);
+				if (!haveExtendedKey)
+				{
+					SetKeyUp(&input, (DWORD)wParam);
+				}
+				else
+				{
+					SetKeyUp2(&input, (DWORD)wParam, isExtendedKey);
+				}
 			}
 			else
 			{
-				SetKeyDown(&input, (DWORD)wParam);
+				if (!haveExtendedKey)
+				{
+					SetKeyDown(&input, (DWORD)wParam);
+				}
+				else
+				{
+					SetKeyDown2(&input, (DWORD)wParam, isExtendedKey);
+				}
 			}
 			#if TEST
-			if (0 != (lParam & 2))
+			if (isDebugKey)
 			{
 				//Set a special Extra Info on the key input so that we don't ignore that injected keypress
 				input.ki.dwExtraInfo = 0x12345678;
@@ -580,12 +665,38 @@ void CancelTimer()
 	}
 }
 
+void SetKeyDown2(INPUT* input, DWORD VKEY, bool isExtendedKey)
+{
+	input->type = INPUT_KEYBOARD;
+	input->ki.wVk = (WORD)VKEY;
+	input->ki.wScan = VKeyToScanCode2(VKEY & 0xFF, VKEY >= 0xE000);
+	input->ki.dwFlags = 0;
+	if (input->ki.wScan >= 0xE000)
+	{
+		input->ki.wScan &= 0xFF;
+		input->ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
+	}
+	input->ki.time = 0;
+	input->ki.dwExtraInfo = 0;
+}
+
+void SetKeyUp2(INPUT* input, DWORD VKEY, bool isExtendedKey)
+{
+	SetKeyDown2(input, VKEY, isExtendedKey);
+	input->ki.dwFlags |= KEYEVENTF_KEYUP;
+}
+
 void SetKeyDown(INPUT* input, DWORD VKEY)
 {
 	input->type = INPUT_KEYBOARD;
 	input->ki.wVk = (WORD)VKEY;
-	input->ki.wScan = 0;
+	input->ki.wScan = VKeyToScanCode(VKEY);
 	input->ki.dwFlags = 0;
+	if (input->ki.wScan >= 0xE000)
+	{
+		input->ki.wScan &= 0xFF;
+		input->ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
+	}
 	input->ki.time = 0;
 	input->ki.dwExtraInfo = 0;
 }
@@ -593,7 +704,7 @@ void SetKeyDown(INPUT* input, DWORD VKEY)
 void SetKeyUp(INPUT* input, DWORD VKEY)
 {
 	SetKeyDown(input, VKEY);
-	input->ki.dwFlags = KEYEVENTF_KEYUP;
+	input->ki.dwFlags |= KEYEVENTF_KEYUP;
 }
 
 bool HaveSuppressedKeys()
@@ -631,6 +742,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 	keyCode = hookStruct->vkCode;
 	bool injected = 0 != (flags & LLKHF_INJECTED);
 	bool released = 0 != (flags & (1 << 7));
+	bool isExtendedKey = 0 != (flags & LLKHF_EXTENDED);
 	bool pressed = !released;
 	#if TEST
 	//Special Extra info indicates that we don't ignore a special injected keypress
@@ -812,7 +924,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 					ReplaySuppressedKeys();
 					//block key now then enqueue it for replay afterwards
 					//so that the key happens after the press to LWIN or LSHIFT
-					InjectKeyDownAsync(keyCode);
+					InjectKeyDownAsync2(keyCode, isExtendedKey);
 					return -1;  //block F23 key
 				}
 			}
@@ -843,7 +955,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 					ReplaySuppressedKeys();
 					//block key now then enqueue it for replay afterwards
 					//so that the key happens after the press to LWIN or LSHIFT
-					InjectKeyDownAsync(keyCode);
+					InjectKeyDownAsync2(keyCode, isExtendedKey);
 					return -1;
 				}
 			}
@@ -1059,6 +1171,9 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 	if (keyCode > 0)
 	{
 		DebugPrintf("%d %s%s0x%02X %s\n", arrivalTime, injectedMessage, pressedMessage, keyCode, GetVKeyName(keyCode));
+		//DWORD extendedKey = ((hookStruct->flags & LLKHF_EXTENDED) ? 0xE000 : 0);
+		//DWORD scanCode = hookStruct->scanCode + extendedKey;
+		//DebugPrintf("debug: scancode %02X -> %02X\n", scanCode, VKeyToScanCode2(keyCode, extendedKey));
 	}
 	#endif //DEBUG
 	LRESULT result = MyKeyboardProc2(code, wParam, lParam);
