@@ -669,7 +669,7 @@ void SetKeyDown2(INPUT* input, DWORD VKEY, bool isExtendedKey)
 {
 	input->type = INPUT_KEYBOARD;
 	input->ki.wVk = (WORD)VKEY;
-	input->ki.wScan = VKeyToScanCode2(VKEY & 0xFF, VKEY >= 0xE000);
+	input->ki.wScan = (WORD)VKeyToScanCode2((WORD)VKEY, isExtendedKey);
 	input->ki.dwFlags = 0;
 	if (input->ki.wScan >= 0xE000)
 	{
@@ -690,7 +690,7 @@ void SetKeyDown(INPUT* input, DWORD VKEY)
 {
 	input->type = INPUT_KEYBOARD;
 	input->ki.wVk = (WORD)VKEY;
-	input->ki.wScan = VKeyToScanCode(VKEY);
+	input->ki.wScan = (WORD)VKeyToScanCode((WORD)VKEY);
 	input->ki.dwFlags = 0;
 	if (input->ki.wScan >= 0xE000)
 	{
