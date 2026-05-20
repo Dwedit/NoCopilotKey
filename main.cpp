@@ -8,6 +8,7 @@ typedef uint32_t u32;
 #include <fcntl.h>
 #include <stdio.h>
 #include <aclapi.h>
+#include "RegistryKeyRemapping.h"
 
 //Test mode: Make backquote act as copilot key  (for testing on a keyboard which doesn't have a copilot key)
 //Also allows testing invalid sequences
@@ -39,6 +40,24 @@ const int KeyChordTimeout = 30;
 
 //The timeout for the three key sequence timer, used for transitions from LWIN -> LSHIFT -> F23
 const int KeyChordTimerTimeout = 100;
+
+#if DEBUG
+int DebugMain();
+EXTERN_C_START
+int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+{
+	return DebugMain();
+}
+EXTERN_C_END
+#endif
+
+int ReleaseMain();
+EXTERN_C_START
+int APIENTRY EntryPoint()
+{
+	return ReleaseMain();
+}
+EXTERN_C_END
 
 #if DEBUG
 
@@ -94,8 +113,6 @@ DWORD WINAPI DebugThreadMain(void* unused)
 
 #endif //DEBUG
 
-EXTERN_C_START
-
 #if USE_SAS
 HMODULE sasModule;
 typedef VOID (WINAPI *SendSAS_Func)(BOOL);
@@ -136,8 +153,6 @@ UINT_PTR reattachTimer;
 
 UINT_PTR activeTimer = 0;
 
-DWORD releaseSequenceTimestamp;
-
 #if HANDLE_INVALID
 DWORD outOfPressSequenceTimestamp;
 DWORD outOfReleaseSequenceTimestamp;
@@ -156,9 +171,9 @@ bool leftShiftSuppressed;
 //bool f23Suppressed;
 bool rightCtrlDown;
 bool leftCtrlDown, leftAltDown, rightAltDown;
+bool allowRightCtrlToReplaceF23 = false;
 
-
-int APIENTRY MyWinMain();
+int APIENTRY ReleaseMain();
 
 LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam);
 
@@ -173,11 +188,11 @@ void DebugPrintf(const char* format, ...);
 //This only applies to debug builds.
 DWORD WINAPI MainThread(void* unused)
 {
-	int exitCode = MyWinMain();
+	int exitCode = ReleaseMain();
 	return exitCode;
 }
 
-int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+int DebugMain()
 {
 	RegisterVKeyCodes();
 	debugEvent = CreateEvent(NULL, false, false, NULL);
@@ -412,16 +427,33 @@ void CALLBACK MyWinEventHookProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND 
 bool IsWindowAdmin(HWND hwnd);
 #endif
 
-int APIENTRY MyWinMain()
+int APIENTRY ReleaseMain()
 {
+	//#if TEST
+	////DELETEME
+	//RegisterRemappedKey(0x45, 0x6E);
+	//RegisterRemappedKey(0x6E, 0x45);
+	////RegisterRemappedKey(0x6E, 0x45);
+	//#endif
+
 	#if HANDLE_INVALID
 	outOfPressSequenceTimestamp = GetTickCount();
 	leftShiftTimestamp = GetTickCount();
 	leftShiftTimestamp2 = GetTickCount();
 	#endif //HANDLE_INVALID
 
-	//commandLine = GetCommandLineW();
-	//argv = CommandLineToArgvW(commandLine, &argc);
+	commandLine = GetCommandLineW();
+	argv = CommandLineToArgvW(commandLine, &argc);
+
+	for (int i = 1; i < argc; i++)
+	{
+		if (0 == wcscmp(argv[i], L"--registry-remap"))
+		{
+			//0x6E = F23,  0xE01D = right ctrl
+			RegisterRemappedKey(0x6E, 0xE01D);
+			allowRightCtrlToReplaceF23 = true;
+		}
+	}
 
 	if (!DO_NOTHING)
 	{
@@ -744,6 +776,8 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 	bool released = 0 != (flags & (1 << 7));
 	bool isExtendedKey = 0 != (flags & LLKHF_EXTENDED);
 	bool pressed = !released;
+	bool isF23 = keyCode == VK_F23 || (allowRightCtrlToReplaceF23 && keyCode == VK_RCONTROL);
+
 	#if TEST
 	//Special Extra info indicates that we don't ignore a special injected keypress
 	if (hookStruct->dwExtraInfo == 0x12345678)
@@ -931,7 +965,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 		}
 		else if (pressState == STATE::LeftShift)
 		{
-			if (keyCode == VK_F23)
+			if (isF23)
 			{
 				SetPressState(STATE::Idle);
 				SetReleaseState(STATE::F23);
@@ -940,11 +974,16 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				leftWindowsSuppressed = false;
 				//Copilot Key is a repeating key, but a real right ctrl key doesn't repeat
 				//Ignore repeated presses
-				if (!rightCtrlDown)
+				if (rightCtrlDown)
+				{
+					return -1;
+				}
+				if (keyCode == VK_F23)
 				{
 					InjectKeyDownAsync(VK_RCONTROL);
+					return -1;  //block F23 key
 				}
-				return -1;  //block F23 key
+				//If we pressed remapped F23->Right Ctrl, allow the Right Ctrl keypress to proceed
 			}
 			else
 			{
@@ -1076,16 +1115,20 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 		outOfPressSequence = false;
 		#endif
 
-		if (keyCode == VK_F23 && releaseState == STATE::F23)
+		if (isF23 && releaseState == STATE::F23)
 		{
 			#if HANDLE_INVALID
 			SetPressState(STATE::Idle);
 			CancelTimer();
 			#endif //HANDLE_INVALID
 			SetReleaseState(STATE::LeftShift);
-			InjectKeyUpAsync(VK_RCONTROL);
-			releaseSequenceTimestamp = GetTickCount();
-			return -1;  //block F23 key release
+
+			if (keyCode == VK_F23)
+			{
+				InjectKeyUpAsync(VK_RCONTROL);
+				return -1;  //block F23 key release
+			}
+			//allow remapped F23->Right Ctrl keypress to proceed
 		}
 		if (keyCode == VK_LSHIFT && releaseState == STATE::LeftShift)
 		{
@@ -1493,4 +1536,3 @@ const char* GetVKeyName(int key)
 }
 
 #endif //DEBUG
-EXTERN_C_END

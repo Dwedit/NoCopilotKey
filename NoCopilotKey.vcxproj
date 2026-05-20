@@ -114,7 +114,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <EntryPointSymbol>MyWinMain</EntryPointSymbol>
+      <EntryPointSymbol>EntryPoint</EntryPointSymbol>
       <AdditionalDependencies>libvcruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/emittoolversioninfo:no %(AdditionalOptions)</AdditionalOptions>
     </Link>
@@ -149,7 +149,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <EntryPointSymbol>MyWinMain</EntryPointSymbol>
+      <EntryPointSymbol>EntryPoint</EntryPointSymbol>
       <AdditionalDependencies>libvcruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/emittoolversioninfo:no %(AdditionalOptions)</AdditionalOptions>
     </Link>
@@ -172,8 +172,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="RegistryKeyRemapping.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="RegistryKeyRemapping.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
