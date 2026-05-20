@@ -173,6 +173,7 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="RegistryKeyRemapping.cpp" />
+    <ClCompile Include="VKeyNameToKeyCode.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="RegistryKeyRemapping.h" />

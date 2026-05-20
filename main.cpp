@@ -169,9 +169,15 @@ int pendingInjectedLeftShiftRelease = 0;
 bool leftWindowsSuppressed;
 bool leftShiftSuppressed;
 //bool f23Suppressed;
+bool allowTargetKeyToReplaceF23 = false;
+DWORD targetVKey = VK_RCONTROL;
+bool targetVKeyNoRepeat = true;
+bool targetVKeyDown = false;
+
+#if USE_SAS
 bool rightCtrlDown;
 bool leftCtrlDown, leftAltDown, rightAltDown;
-bool allowRightCtrlToReplaceF23 = false;
+#endif //USE_SAS
 
 int APIENTRY ReleaseMain();
 
@@ -405,10 +411,10 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			if (data.data.keyboard.Message == WM_KEYUP)
 			{
 				//If F23 key is detected as being released here, then somehow it didn't get rejected by the hook
-				//Force right ctrl to be released in case that happens
+				//Force target key to be released in case that happens
 				if (data.data.keyboard.VKey == VK_F23)
 				{
-					InjectKeyUpAsync(VK_RCONTROL);
+					InjectKeyUpAsync(targetVKey);
 				}
 			}
 		}
@@ -445,14 +451,43 @@ int APIENTRY ReleaseMain()
 	commandLine = GetCommandLineW();
 	argv = CommandLineToArgvW(commandLine, &argc);
 
+	bool wantToRegistryRemap = false;
+
 	for (int i = 1; i < argc; i++)
 	{
 		if (0 == wcscmp(argv[i], L"--registry-remap"))
 		{
-			//0x6E = F23,  0xE01D = right ctrl
-			RegisterRemappedKey(0x6E, 0xE01D);
-			allowRightCtrlToReplaceF23 = true;
+			wantToRegistryRemap = true;
 		}
+		else if (0 == wcscmp(argv[i], L"--key") && i + 1 < argc)
+		{
+			i++;
+			const wchar_t* const keyName = argv[i];
+			int VKeyNameToKeyCode(const wchar_t* keyName);
+			int keyCode = VKeyNameToKeyCode(keyName);
+			if (keyCode != 0)
+			{
+				targetVKey = keyCode;
+				if (targetVKey == VK_SHIFT) targetVKey = VK_RSHIFT;
+				if (targetVKey == VK_MENU) targetVKey = VK_RMENU;
+				if (targetVKey == VK_CONTROL) targetVKey = VK_RCONTROL;
+				if (targetVKey >= VK_LSHIFT && targetVKey <= VK_RMENU)
+				{
+					targetVKeyNoRepeat = true;
+				}
+				else
+				{
+					targetVKeyNoRepeat = false;
+				}
+			}
+		}
+	}
+	if (wantToRegistryRemap)
+	{
+		int targetScanCode = VKeyToScanCode(targetVKey);
+		//scancode 0x6E is the F23 key
+		RegisterRemappedKey(0x6E, targetScanCode);
+		allowTargetKeyToReplaceF23 = true;
 	}
 
 	if (!DO_NOTHING)
@@ -541,9 +576,9 @@ void IsAdminChanged()
 {
 	if (!activeWindowIsAdmin)
 	{
-		if (rightCtrlDown)
+		if (targetVKeyDown)
 		{
-			InjectKeyUpAsync(VK_RCONTROL);
+			InjectKeyUpAsync(targetVKey);
 			InjectKeyUpAsync(VK_LSHIFT);
 			InjectKeyUpAsync(VK_LWIN);
 			InjectKeyUpAsync(VK_F23);
@@ -551,10 +586,10 @@ void IsAdminChanged()
 	}
 	else
 	{
-		if (rightCtrlDown)
+		if (targetVKeyDown)
 		{
 			#if DEBUG
-			DebugPrintf("Right ctrl is stuck due to switching to admin window\n");
+			DebugPrintf("Target key is stuck due to switching to admin window\n");
 			#endif
 		}
 	}
@@ -776,7 +811,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 	bool released = 0 != (flags & (1 << 7));
 	bool isExtendedKey = 0 != (flags & LLKHF_EXTENDED);
 	bool pressed = !released;
-	bool isF23 = keyCode == VK_F23 || (allowRightCtrlToReplaceF23 && keyCode == VK_RCONTROL);
+	bool isF23 = keyCode == VK_F23 || (allowTargetKeyToReplaceF23 && keyCode == targetVKey);
 
 	#if TEST
 	//Special Extra info indicates that we don't ignore a special injected keypress
@@ -945,7 +980,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				SetReleaseState(STATE::F23);
 				CancelTimer();
 				leftWindowsSuppressed = false;
-				InjectKeyDownAsync(VK_RCONTROL);
+				InjectKeyDownAsync(targetVKey);
 				return -1;  //block F23 key
 			}
 			#endif //HANDLE_INVALID
@@ -972,18 +1007,18 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				CancelTimer();
 				leftShiftSuppressed = false;
 				leftWindowsSuppressed = false;
-				//Copilot Key is a repeating key, but a real right ctrl key doesn't repeat
+				//Copilot Key is a repeating key, but a real right ctrl (or alt or shift) key doesn't repeat
 				//Ignore repeated presses
-				if (rightCtrlDown)
+				if (targetVKeyDown && targetVKeyNoRepeat)
 				{
 					return -1;
 				}
 				if (keyCode == VK_F23)
 				{
-					InjectKeyDownAsync(VK_RCONTROL);
+					InjectKeyDownAsync(targetVKey);
 					return -1;  //block F23 key
 				}
-				//If we pressed remapped F23->Right Ctrl, allow the Right Ctrl keypress to proceed
+				//If we pressed remapped F23->Target Key, allow the Target keypress to proceed
 			}
 			else
 			{
@@ -1063,7 +1098,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			CancelTimer();
 			outOfPressSequenceSuppressLeftWindows = true;
 			leftWindowsSuppressed = false;
-			InjectKeyDownAsync(VK_RCONTROL);
+			InjectKeyDownAsync(targetVKey);
 			return -1;  //block F23 key
 		}
 
@@ -1125,10 +1160,10 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 
 			if (keyCode == VK_F23)
 			{
-				InjectKeyUpAsync(VK_RCONTROL);
+				InjectKeyUpAsync(targetVKey);
 				return -1;  //block F23 key release
 			}
-			//allow remapped F23->Right Ctrl keypress to proceed
+			//allow remapped F23->Target keypress to proceed
 		}
 		if (keyCode == VK_LSHIFT && releaseState == STATE::LeftShift)
 		{
@@ -1155,7 +1190,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			#endif
 			//This only happens when there is an F23 release without a corresponding handled F23 press
 			//We don't have a good way to handle this, so just treat all keys as if they are being released.
-			InjectKeyUpAsync(VK_RCONTROL);
+			InjectKeyUpAsync(targetVKey);
 			InjectKeyUpAsync(VK_LSHIFT);
 			InjectKeyUpAsync(VK_LWIN);
 			InjectKeyUpAsync(VK_F23);
@@ -1230,6 +1265,11 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 	{
 		if (pressed)
 		{
+			if (keyCode == targetVKey && injected)
+			{
+				targetVKeyDown = true;
+			}
+			#if USE_SAS
 			if (keyCode == VK_LMENU)
 			{
 				leftAltDown = true;
@@ -1242,7 +1282,7 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 			{
 				leftCtrlDown = true;
 			}
-			if (keyCode == VK_RCONTROL && injected)
+			if (keyCode == VK_RCONTROL)
 			{
 				rightCtrlDown = true;
 			}
@@ -1250,17 +1290,21 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 			{
 				if ((leftAltDown || rightAltDown) && (leftCtrlDown || rightCtrlDown))
 				{
-					#if USE_SAS
 					#if DEBUG
 					DebugPrintf("Sending Alt + Ctrl + Del (SendSAS)\n");
 					#endif
 					if (SendSAS != NULL) SendSAS(true);
-					#endif //USE_SAS
 				}
 			}
+			#endif //USE_SAS
 		}
 		else
 		{
+			if (keyCode == targetVKey && injected)
+			{
+				targetVKeyDown = false;
+			}
+			#if USE_SAS
 			if (keyCode == VK_LMENU)
 			{
 				leftAltDown = false;
@@ -1273,10 +1317,11 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 			{
 				leftCtrlDown = false;
 			}
-			if (keyCode == VK_RCONTROL && injected)
+			if (keyCode == VK_RCONTROL)
 			{
 				rightCtrlDown = false;
 			}
+			#endif //USE_SAS
 		}
 	}
 	return result;
