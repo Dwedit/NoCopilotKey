@@ -44,9 +44,11 @@ namespace NoCopilotKey_Installer
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "NoCopilotKey.lnk");
         }
 
-        public static bool Install(InstallationMode installationMode, AutoRunMode autoRunMode)
+        public static bool Install(InstallationMode installationMode, AutoRunMode autoRunMode, bool doRegistryRemap, string customVKey)
         {
             bool needAdmin = installationMode == InstallationMode.InstallToProgramFiles || autoRunMode == AutoRunMode.ScheduledTask;
+            bool haveRegistryRemap = needAdmin && KeyBindings.HaveKeyMapping(0x6E);
+
             if (!IsAdmin() && needAdmin)
             {
                 RestartAsAdmin();
@@ -70,6 +72,25 @@ namespace NoCopilotKey_Installer
                 throw new ArgumentOutOfRangeException(nameof(installationMode));
             }
             string exePath = Path.Combine(targetDirectory, "NoCopilotKey.exe");
+            string arguments = "";
+            if (doRegistryRemap || !String.IsNullOrEmpty(customVKey))
+            {
+                if (doRegistryRemap)
+                {
+                    if (arguments.Length > 0) arguments += " ";
+                    arguments += "--registry-remap";
+                }
+                if (!String.IsNullOrEmpty(customVKey))
+                {
+                    //validate custom vkey
+                    string friendlyName = KeySelectionForm.GetFriendlyNameForVKey(customVKey);
+                    if (!String.IsNullOrEmpty(friendlyName))
+                    {
+                        if (arguments.Length > 0) arguments += " ";
+                        arguments += "--key " + customVKey;
+                    }
+                }
+            }
             string installerExePath = Path.Combine(targetDirectory, "NoCopilotKey Installer.exe");
 
             try
@@ -108,7 +129,7 @@ namespace NoCopilotKey_Installer
 
             if (autoRunMode == AutoRunMode.ScheduledTask)
             {
-                var task = ScheduledTask.CreateScheduledTask(exePath, "NoCopilotKey", "Dan Weiss (www.dwedit.org)", "Changes Copilot keyboard key into right ctrl key");
+                var task = ScheduledTask.CreateScheduledTask(exePath, arguments, "NoCopilotKey", "Dan Weiss (www.dwedit.org)", "Changes Copilot keyboard key into right ctrl key");
                 if (task == null)
                 {
                     MessageBox.Show("Failed to create a scheduled task", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Stop);
@@ -119,7 +140,7 @@ namespace NoCopilotKey_Installer
                 string lnkFileName = GetStartupShortcutPath();
                 try
                 {
-                    Shortcut.CreateShortcut(lnkFileName, exePath);
+                    Shortcut.CreateShortcut(lnkFileName, exePath, arguments);
                 }
                 catch
                 {
@@ -159,7 +180,13 @@ namespace NoCopilotKey_Installer
             {
                 MessageBox.Show("Failed to stop other running instances");
             }
-            Process.Start(exePath);
+            Process.Start(exePath, arguments);
+
+            if (!haveRegistryRemap && doRegistryRemap)
+            {
+                MessageBox.Show("Using the registry to remap the F23 Key will take effect once the computer is restarted.\r\nUntil then, the program will remap the Copilot key by using only global keyboard hooks.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+
             return true;
         }
 
@@ -347,6 +374,22 @@ namespace NoCopilotKey_Installer
                         uninstallerRemovedFromRegistry = false;
                         if (registryKeyExists) anyFailures = true;
                         MessageBox.Show("Failed to remove uninstallation information from the registry.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Stop);
+                    }
+                }
+            }
+            if (needAdmin)
+            {
+                //remove F23 registry remap
+                bool okay = KeyBindings.RegisterRemappedKey(0x6E, 0x6E, out bool changed);
+                if (changed)
+                {
+                    if (!okay)
+                    {
+                        MessageBox.Show("Failed to remove F23 key remapping from registry", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Stop);
+                    }
+                    else
+                    {
+                        MessageBox.Show("F23 Key (Copilot Key) will remain remapped until the computer is restarted.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                 }
             }
@@ -539,6 +582,44 @@ namespace NoCopilotKey_Installer
             System.Security.Principal.WindowsIdentity identity = System.Security.Principal.WindowsIdentity.GetCurrent();
             System.Security.Principal.WindowsPrincipal principal = new System.Security.Principal.WindowsPrincipal(identity);
             return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
+
+        public static string[] GetArgs()
+        {
+            string args = "";
+            string lnkPath = GetStartupShortcutPath();
+            if (File.Exists(lnkPath))
+            {
+                args = Shortcut.GetShortcutArguments(lnkPath);
+            }
+            else if (IsScheduledTask())
+            {
+                args = ScheduledTask.GetScheduledTaskArguments("NoCopilotKey");
+            }
+            if (String.IsNullOrEmpty(args))
+            {
+                return Array.Empty<string>();
+            }
+            return args.Split(' ');
+        }
+
+        public static string GetCustomVKey(string[] args)
+        {
+            int i = Array.IndexOf(args, "--key");
+            if (i >= 0 && i + 1 < args.Length)
+            {
+                string vkey = args[i + 1];
+                string friendlyName = KeySelectionForm.GetFriendlyNameForVKey(vkey);
+                if (!String.IsNullOrEmpty(friendlyName))
+                {
+                    return vkey;
+                }
+            }
+            return "";
+        }
+        public static bool UseRegistryRemap(string [] args)
+        {
+            return args.Contains("--registry-remap");
         }
     }
 }

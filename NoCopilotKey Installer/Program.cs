@@ -30,6 +30,8 @@ namespace NoCopilotKey_Installer
 
             bool doUninstall = false;
             bool doStop = false;
+            bool doRegistryRemap = false;
+            string customVKey = "";
 
             if (args.Contains("--install-to-program-files"))
             {
@@ -65,10 +67,19 @@ namespace NoCopilotKey_Installer
             {
                 doStop = true;
             }
+            if (args.Contains("--registry-remap"))
+            {
+                doRegistryRemap = true;
+            }
+            int i = Array.IndexOf(args, "--key");
+            if (i >= 0 && i + 1 < args.Length)
+            {
+                customVKey = args[i + 1];
+            }
 
             if (!doUninstall && !doStop && installationMode != InstallationMode.Undefined && autoRunMode != AutoRunMode.Undefined)
             {
-                bool installOkay = Installer.Install(installationMode, autoRunMode);
+                bool installOkay = Installer.Install(installationMode, autoRunMode, doRegistryRemap, customVKey);
                 if (!installOkay) return 1;
                 return 0;
             }
@@ -111,10 +122,8 @@ namespace NoCopilotKey_Installer
             return Environment.ExitCode;
         }
 
-
         [DllImport("user32.dll", CallingConvention = CallingConvention.Winapi)]
         [return: MarshalAs(UnmanagedType.Bool)]
         static extern bool SetForegroundWindow(IntPtr hWnd);
     }
-
 }

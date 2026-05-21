@@ -58,13 +58,28 @@ namespace NoCopilotKey_Installer
             /// <summary>Sets the path and file name of a Shell link object</summary>
             void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
         }
-        public static void CreateShortcut(string lnkFileName, string exePath)
+        public static void CreateShortcut(string lnkFileName, string exePath, string arguments = "")
         {
             var shellLink = (IShellLinkW)new ShellLinkClass();
             shellLink.SetPath(exePath);
+            if (!String.IsNullOrEmpty(arguments))
+            {
+                shellLink.SetArguments(arguments);
+            }
             var persistFile = (System.Runtime.InteropServices.ComTypes.IPersistFile)shellLink;
             Directory.CreateDirectory(Path.GetDirectoryName(lnkFileName));
             persistFile.Save(lnkFileName, false);
+        }
+        public static string GetShortcutArguments(string lnkFileName)
+        {
+            var shellLink = (IShellLinkW)new ShellLinkClass();
+            //shellLink.SetPath(exePath);
+            var persistFile = (System.Runtime.InteropServices.ComTypes.IPersistFile)shellLink;
+            persistFile.Load(lnkFileName, 0);
+            StringBuilder sb = new StringBuilder();
+            sb.Capacity = 260;
+            shellLink.GetArguments(sb, sb.Capacity);
+            return sb.ToString();
         }
 
     }

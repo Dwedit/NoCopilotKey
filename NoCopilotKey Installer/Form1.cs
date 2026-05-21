@@ -21,6 +21,7 @@ namespace NoCopilotKey_Installer
 
         private void Form1_Load(object sender, EventArgs e)
         {
+            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.pictureBox1.Image = System.Drawing.SystemIcons.Shield.ToBitmap();
             this.pictureBox1.Left = this.optProgramFiles.Left + this.optProgramFiles.Width + 0;
             this.pictureBox1.Top = this.optProgramFiles.Top + (this.optProgramFiles.Height - this.pictureBox1.Height) / 2;
@@ -50,6 +51,20 @@ namespace NoCopilotKey_Installer
                 optUserProgramFiles.Enabled = true;
                 optProgramFiles.Enabled = true;
             }
+            if (isInstalled)
+            {
+                var args = Installer.GetArgs();
+                string customVKey = Installer.GetCustomVKey(args);
+                if (string.IsNullOrEmpty(customVKey))
+                {
+                    customVKey = "VK_RCONTROL";
+                }
+                this.selectedVKey = customVKey;
+                this.selectedFriendlyName = KeySelectionForm.GetFriendlyNameForVKey(customVKey);
+                this.lblKey.Text = this.selectedFriendlyName;
+                this.chkRemapViaRegistry.Checked = Installer.UseRegistryRemap(args);
+            }
+
             if (isInstalled)
             {
                 label1.Text = "Program is already installed." + Environment.NewLine + "To change the installation mode, uninstall the program first.";
@@ -154,6 +169,16 @@ namespace NoCopilotKey_Installer
                 args.Add("--install-to-user-program-files");
                 args.Add("--register-as-startup-item");
             }
+            if (this.chkRemapViaRegistry.Enabled && this.chkRemapViaRegistry.Checked)
+            {
+                args.Add("--registry-remap");
+            }
+            if (this.selectedVKey != "VK_RCONTROL")
+            {
+                args.Add("--key");
+                args.Add(this.selectedVKey);
+            }
+
             int exitCode = 1;
             if (!(needAdmin && !Installer.IsAdmin()))
             {
@@ -182,6 +207,51 @@ namespace NoCopilotKey_Installer
                 MessageBox.Show(this, "Installation Failed", "NoCopilotKey", MessageBoxButtons.OK, MessageBoxIcon.Stop);
             }
             RefreshButtons();
+        }
+
+        private void optProgramFiles_CheckedChanged(object sender, EventArgs e)
+        {
+            UpdateCheckboxes();
+        }
+
+        private void optUserProgramFiles_CheckedChanged(object sender, EventArgs e)
+        {
+            UpdateCheckboxes();
+        }
+
+        void UpdateCheckboxes()
+        {
+            if (optUserProgramFiles.Checked)
+            {
+                chkRemapViaRegistry.Enabled = false;
+            }
+            else
+            {
+                chkRemapViaRegistry.Enabled = true;
+            }
+        }
+
+        private void selectKeyButton_Click(object sender, EventArgs e)
+        {
+            SelectCustomKey();
+        }
+
+        string selectedVKey = "VK_RCONTROL";
+        string selectedFriendlyName = "Right Ctrl";
+
+        void SelectCustomKey()
+        {
+            using (var keySelectionForm = new KeySelectionForm())
+            {
+                keySelectionForm.SelectedVKey = selectedVKey;
+                if (keySelectionForm.ShowDialog() == DialogResult.OK)
+                {
+                    this.selectedVKey = keySelectionForm.SelectedVKey;
+                    this.selectedFriendlyName = keySelectionForm.SelectedFriendlyName;
+                    this.lblKey.Text = this.selectedFriendlyName;
+                    //this.selectKeyButton.Text = this.selectedVKey;
+                }
+            }
         }
     }
 }

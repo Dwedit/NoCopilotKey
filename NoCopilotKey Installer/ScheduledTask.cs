@@ -108,7 +108,7 @@ namespace NoCopilotKey_Installer
         //    }
         //}
 
-        public static TaskScheduler.IRegisteredTask CreateScheduledTask(string exePath, string taskName, string author, string description)
+        public static TaskScheduler.IRegisteredTask CreateScheduledTask(string exePath, string arguments, string taskName, string author, string description)
         {
             const int TASK_CREATE_OR_UPDATE = 6;
             var taskService = GetTaskService();
@@ -123,6 +123,10 @@ namespace NoCopilotKey_Installer
                     var action = taskDefinition.Actions.Create(_TASK_ACTION_TYPE.TASK_ACTION_EXEC);
                     var execAction = (IExecAction)action;
                     execAction.Path = exePath;
+                    if (!String.IsNullOrEmpty(arguments))
+                    {
+                        execAction.Arguments = arguments;
+                    }
                     var principal = taskDefinition.Principal;
                     principal.RunLevel = _TASK_RUNLEVEL.TASK_RUNLEVEL_HIGHEST;
                     principal.GroupId = "S-1-5-32-545"; //"Users"
@@ -152,5 +156,24 @@ namespace NoCopilotKey_Installer
             return registeredTask;
         }
 
+        public static string GetScheduledTaskArguments(string taskName)
+        {
+            var scheduledTask = GetScheduledTask(taskName);
+            if (scheduledTask != null)
+            {
+                var definition = scheduledTask.Definition;
+                var actions = definition.Actions;
+                int count = actions.Count;
+                for (int i = 1; i <= count; i++)
+                {
+                    if (actions[i].Type == _TASK_ACTION_TYPE.TASK_ACTION_EXEC)
+                    {
+                        var execAction = (IExecAction)actions[i];
+                        return execAction.Arguments;
+                    }
+                }
+            }
+            return "";
+        }
     }
 }
