@@ -82,12 +82,12 @@ namespace NoCopilotKey_Installer
                     var br = new BinaryReader(ms);
                     int headerVersion = br.ReadInt32();
                     int headerFlags = br.ReadInt32();
-                    int numberOfEntries = br.ReadInt32();
+                    int numberOfEntries = br.ReadInt32() - 1;
                     if (headerVersion != 0 || headerFlags != 0)
                     {
                         return null;
                     }
-                    if ((ulong)numberOfEntries * 4 + 16 > (ulong)bytes.Length)
+                    if ((long)numberOfEntries * 4 + 16 > (long)bytes.Length || numberOfEntries < 0)
                     {
                         return null;
                     }
@@ -123,7 +123,7 @@ namespace NoCopilotKey_Installer
                     var bw = new BinaryWriter(ms);
                     bw.Write((int)0); //headerVersion
                     bw.Write((int)0); //headerFlags
-                    bw.Write((int)entries.Length); //numberOfEntries
+                    bw.Write((int)entries.Length + 1); //numberOfEntries
                     for (int i = 0; i < entries.Length; i++)
                     {
                         bw.Write((int)entries[i].ToInt32());

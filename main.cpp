@@ -435,13 +435,6 @@ bool IsWindowAdmin(HWND hwnd);
 
 int APIENTRY ReleaseMain()
 {
-	//#if TEST
-	////DELETEME
-	//RegisterRemappedKey(0x45, 0x6E);
-	//RegisterRemappedKey(0x6E, 0x45);
-	////RegisterRemappedKey(0x6E, 0x45);
-	//#endif
-
 	#if HANDLE_INVALID
 	outOfPressSequenceTimestamp = GetTickCount();
 	leftShiftTimestamp = GetTickCount();

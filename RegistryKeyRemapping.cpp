@@ -37,7 +37,7 @@ int ReadKeyBindings(KeyBindingsEntry arr[], int maxArrCount)
 	}
 	KeyBindingsHeader* pHeader = (KeyBindingsHeader*)buffer;
 	KeyBindingsEntry* pEntry = (KeyBindingsEntry*)(buffer + sizeof(KeyBindingsHeader));
-	int count = pHeader->numberOfEntries;
+	int count = pHeader->numberOfEntries - 1;
 	if (count > maxArrCount)
 	{
 		count = maxArrCount;
@@ -106,7 +106,7 @@ bool WriteKeyBindings(KeyBindingsEntry arr[], int count)
 		KeyBindingsHeader* header = (KeyBindingsHeader*)p;
 		header->version = 0;
 		header->headerFlags = 0;
-		header->numberOfEntries = count;
+		header->numberOfEntries = count + 1;
 		p += sizeof(KeyBindingsHeader);
 		KeyBindingsEntry* pEntry = (KeyBindingsEntry*)p;
 		for (int i = 0; i < count; i++)
