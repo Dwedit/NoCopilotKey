@@ -4,8 +4,8 @@ typedef uint16_t WORD;
 
 struct KeyBindingsEntry
 {
-	WORD sourceKey;
 	WORD destinationKey;
+	WORD sourceKey;
 };
 
 int ReadKeyBindings(KeyBindingsEntry arr[], int maxArrCount);

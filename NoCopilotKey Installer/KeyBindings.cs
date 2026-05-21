@@ -24,11 +24,11 @@ namespace NoCopilotKey_Installer
     [StructLayout(LayoutKind.Sequential)]
     struct KeyBindingsEntry
     {
-        public ushort SourceKey;
         public ushort DestinationKey;
+        public ushort SourceKey;
         public int ToInt32()
         {
-            return (int)((uint)SourceKey | ((uint)DestinationKey << 16));
+            return (int)((uint)DestinationKey | ((uint)SourceKey << 16));
         }
         public static KeyBindingsEntry[] FromByteArray(byte[] bytes, int startPosition, int byteCount)
         {
@@ -44,8 +44,8 @@ namespace NoCopilotKey_Installer
                 byte b1 = bytes[i * 4 + 1 + startPosition];
                 byte b2 = bytes[i * 4 + 2 + startPosition];
                 byte b3 = bytes[i * 4 + 3 + startPosition];
-                arr[i].SourceKey = (ushort)(b0 + (b1 << 8));
-                arr[i].DestinationKey = (ushort)(b2 + (b3 << 8));
+                arr[i].DestinationKey = (ushort)(b0 + (b1 << 8));
+                arr[i].SourceKey = (ushort)(b2 + (b3 << 8));
             }
             return arr;
         }
@@ -57,8 +57,8 @@ namespace NoCopilotKey_Installer
             }
             for (int i = 0; i < arr.Length; i++)
             {
-                ushort a = arr[i].SourceKey;
-                ushort b = arr[i].DestinationKey;
+                ushort a = arr[i].DestinationKey;
+                ushort b = arr[i].SourceKey;
                 bytes[i * 4 + 0 + startPosition] = (byte)(a & 0xFF);
                 bytes[i * 4 + 1 + startPosition] = (byte)((a >> 8) & 0xFF);
                 bytes[i * 4 + 2 + startPosition] = (byte)(b & 0xFF);
