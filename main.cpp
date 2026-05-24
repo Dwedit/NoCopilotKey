@@ -10,6 +10,8 @@ typedef uint32_t u32;
 #include <aclapi.h>
 #include "RegistryKeyRemapping.h"
 
+int my_strnicmp(const wchar_t* str1, const char* str2, int limit);
+
 //Test mode: Make backquote act as copilot key  (for testing on a keyboard which doesn't have a copilot key)
 //Also allows testing invalid sequences
 #define TEST 0
@@ -51,11 +53,11 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 EXTERN_C_END
 #endif
 
-int ReleaseMain();
+int Main();
 EXTERN_C_START
 int APIENTRY EntryPoint()
 {
-	return ReleaseMain();
+	return Main();
 }
 EXTERN_C_END
 
@@ -170,8 +172,8 @@ bool leftWindowsSuppressed;
 bool leftShiftSuppressed;
 //bool f23Suppressed;
 bool allowTargetKeyToReplaceF23 = false;
-DWORD targetVKey = VK_RCONTROL;
-bool targetVKeyNoRepeat = true;
+DWORD targetVKey;
+bool targetVKeyNoRepeat;
 bool targetVKeyDown = false;
 
 #if USE_SAS
@@ -179,7 +181,7 @@ bool rightCtrlDown;
 bool leftCtrlDown, leftAltDown, rightAltDown;
 #endif //USE_SAS
 
-int APIENTRY ReleaseMain();
+int APIENTRY Main();
 
 LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam);
 
@@ -194,7 +196,7 @@ void DebugPrintf(const char* format, ...);
 //This only applies to debug builds.
 DWORD WINAPI MainThread(void* unused)
 {
-	int exitCode = ReleaseMain();
+	int exitCode = Main();
 	return exitCode;
 }
 
@@ -433,8 +435,11 @@ void CALLBACK MyWinEventHookProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND 
 bool IsWindowAdmin(HWND hwnd);
 #endif
 
-int APIENTRY ReleaseMain()
+int APIENTRY Main()
 {
+	targetVKey = VK_RCONTROL;
+	targetVKeyNoRepeat = true;
+
 	#if HANDLE_INVALID
 	outOfPressSequenceTimestamp = GetTickCount();
 	leftShiftTimestamp = GetTickCount();
@@ -448,11 +453,11 @@ int APIENTRY ReleaseMain()
 
 	for (int i = 1; i < argc; i++)
 	{
-		if (0 == wcscmp(argv[i], L"--registry-remap"))
+		if (0 == my_strnicmp(argv[i], "--registry-remap", 255))
 		{
 			wantToRegistryRemap = true;
 		}
-		else if (0 == wcscmp(argv[i], L"--key") && i + 1 < argc)
+		else if (0 == my_strnicmp(argv[i], "--key", 255) && i + 1 < argc)
 		{
 			i++;
 			const wchar_t* const keyName = argv[i];

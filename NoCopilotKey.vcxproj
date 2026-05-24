@@ -113,10 +113,11 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
       <EntryPointSymbol>EntryPoint</EntryPointSymbol>
       <AdditionalDependencies>libvcruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalOptions>/emittoolversioninfo:no %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/emittoolversioninfo:no /MERGE:.rdata=.text /MERGE:.pdata=.text /STUB:stub.bin %(AdditionalOptions)</AdditionalOptions>
+      <MergeSections>_RDATA=.text</MergeSections>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -148,10 +149,11 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
       <EntryPointSymbol>EntryPoint</EntryPointSymbol>
       <AdditionalDependencies>libvcruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalOptions>/emittoolversioninfo:no %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/emittoolversioninfo:no /MERGE:.rdata=.text /MERGE:.pdata=.text /STUB:stub.bin %(AdditionalOptions)</AdditionalOptions>
+      <MergeSections>_RDATA=.text</MergeSections>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
     </Link>
     <CustomBuildStep>
       <Command>

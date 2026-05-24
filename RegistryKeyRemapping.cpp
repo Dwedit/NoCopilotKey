@@ -36,7 +36,8 @@ int ReadKeyBindings(KeyBindingsEntry arr[], int maxArrCount)
 		return 0;
 	}
 	KeyBindingsHeader* pHeader = (KeyBindingsHeader*)buffer;
-	KeyBindingsEntry* pEntry = (KeyBindingsEntry*)(buffer + sizeof(KeyBindingsHeader));
+	//using volatile to prevent importing memcpy
+	KeyBindingsEntry* volatile pEntry = (KeyBindingsEntry*volatile)(buffer + sizeof(KeyBindingsHeader));
 	int count = pHeader->numberOfEntries - 1;
 	if (count > maxArrCount)
 	{
@@ -108,7 +109,8 @@ bool WriteKeyBindings(KeyBindingsEntry arr[], int count)
 		header->headerFlags = 0;
 		header->numberOfEntries = count + 1;
 		p += sizeof(KeyBindingsHeader);
-		KeyBindingsEntry* pEntry = (KeyBindingsEntry*)p;
+		//using volatile to prevent importing memcpy
+		KeyBindingsEntry*volatile pEntry = (KeyBindingsEntry*volatile)p;
 		for (int i = 0; i < count; i++)
 		{
 			*pEntry = arr[i];
