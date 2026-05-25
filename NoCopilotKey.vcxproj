@@ -115,8 +115,8 @@
       <OptimizeReferences>true</OptimizeReferences>
       <EntryPointSymbol>EntryPoint</EntryPointSymbol>
       <AdditionalDependencies>libvcruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalOptions>/emittoolversioninfo:no /MERGE:.rdata=.text /MERGE:.pdata=.text /STUB:stub.bin %(AdditionalOptions)</AdditionalOptions>
-      <MergeSections>_RDATA=.text</MergeSections>
+      <AdditionalOptions>/emittoolversioninfo:no /MERGE:.pdata=.rdata /STUB:stub.bin %(AdditionalOptions)</AdditionalOptions>
+      <MergeSections>_RDATA=.rdata</MergeSections>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
     </Link>
   </ItemDefinitionGroup>

@@ -33,7 +33,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 EXTERN_C_END
 #endif
 
-int Main();
+int APIENTRY Main();
 EXTERN_C_START
 int APIENTRY EntryPoint()
 {
