@@ -277,9 +277,10 @@ int my_strnicmp(const wchar_t* str1, const char* str2, int limit)
 		{
 			c2 -= 0x20;
 		}
-		if (c != c2)
+		int difference = c - c2;
+		if (difference != 0)
 		{
-			return c - c2;
+			return difference;
 		}
 		if (c == 0) break;
 	}
@@ -294,7 +295,7 @@ int VKeyNameToKeyCode(const wchar_t* keyName)
 	}
 
 	const char* tableKeyName = allKeyNamesMultistring;
-	for (int keyIndex = 0; keyIndex < 256; keyIndex++)
+	for (BYTE keyIndex = 0; keyIndex <= VK_ZOOM; keyIndex++)
 	{
 		int entryLen = strlen(tableKeyName);
 		if (0 == my_strnicmp(keyName, tableKeyName, entryLen + 1))
