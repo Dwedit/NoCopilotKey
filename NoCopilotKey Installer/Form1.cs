@@ -25,6 +25,17 @@ namespace NoCopilotKey_Installer
             this.pictureBox1.Image = System.Drawing.SystemIcons.Shield.ToBitmap();
             this.pictureBox1.Left = this.optProgramFiles.Left + this.optProgramFiles.Width + 0;
             this.pictureBox1.Top = this.optProgramFiles.Top + (this.optProgramFiles.Height - this.pictureBox1.Height) / 2;
+            string programFilesDirectory = Installer.GetProgramFilesAppDirectory();
+            string userProgramFilesDirectory = Installer.GetUserProgramFilesAppDirectory();
+
+            this.toolTip1.AutoPopDelay = 32767;
+            this.toolTip1.InitialDelay = 200;
+            this.toolTip1.ReshowDelay = 200;
+            this.toolTip1.SetToolTip(optProgramFiles, "When installed as Administrator, the program will be installed into " + programFilesDirectory + "," + Environment.NewLine +
+                "and a scheduled task will be created to automatically run the program as admin.");
+            this.toolTip1.SetToolTip(optUserProgramFiles, "When installing as a regular user, the program will be installed into " + userProgramFilesDirectory + "," + Environment.NewLine +
+                "and a Startup shortcut will be created in your Start Menu to automatically run the program.");
+
             RefreshButtons();
         }
 

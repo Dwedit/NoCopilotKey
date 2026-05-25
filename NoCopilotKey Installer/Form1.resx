@@ -117,4 +117,21 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <metadata name="toolTip1.TrayLocation" type="System.Drawing.Point, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+    <value>17, 17</value>
+  </metadata>
+  <data name="chkRemapViaRegistry.ToolTip" xml:space="preserve">
+    <value>Remapping F23 to Right Ctrl (or selected key) using the registry:
+• While NoCopilotKey is running, the program will work as normal.  The CopilotKey key will
+   act as Right Ctrl (or selected key) and the Left Windows and Left Shift keys will work independently.
+• When NoCopilotKey is no longer running, the Copilot Key will act as if you are
+   holding down Left Windows, Left Shift, and Right Ctrl (or selected key) at the same time.
+• Do not use this If your system produces a non-standard key sequence when you press the copilot key.
+• May improve compatibility with certain programs which are unaffected by global keyboard hooks.
+• May reduce the chance of Right Ctrl (or selected key) possibly getting stuck.
+• Does not cause Alt+Ctrl+Del to work when remapping to Right Ctrl.
+• After installing, remapping F23 will not take effect untl the computer has been restarted.
+   Until then, NoCopilotKey will run in its usual way using global keyboard hooks.
+• After uninstalling, a restart will be required to remap the F23 key back again.</value>
+  </data>
 </root>

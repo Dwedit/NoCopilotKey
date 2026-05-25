@@ -187,6 +187,7 @@ namespace NoCopilotKey_Installer
                 MessageBox.Show("Using the registry to remap the F23 Key will take effect once the computer is restarted.\r\nUntil then, the program will remap the Copilot key by using only global keyboard hooks.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
 
+            SetParentProcessForegroundWindow();
             return true;
         }
 
@@ -414,6 +415,7 @@ namespace NoCopilotKey_Installer
                 Process.Start(startInfo);
                 Environment.Exit(0);
             }
+            SetParentProcessForegroundWindow();
             return !anyFailures;
         }
 
@@ -621,5 +623,80 @@ namespace NoCopilotKey_Installer
         {
             return args.Contains("--registry-remap");
         }
+
+        static bool SetParentProcessForegroundWindow()
+        {
+            int parentProcessId = GetParentProcessId();
+            if (parentProcessId == 0) return false;
+            //If the parent process is this executable, then make that the active window
+            using (var parentProcess = Process.GetProcessById(parentProcessId))
+            {
+                string fileName = parentProcess.MainModule.FileName;
+                string myFileName = Process.GetCurrentProcess().MainModule.FileName;
+                if (String.Equals(myFileName, fileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return SetForegroundWindow(parentProcess.Id);
+                }
+                return false;
+            }
+        }
+
+        static int GetParentProcessId()
+        {
+            try
+            {
+                PROCESS_BASIC_INFORMATION processBasicInformation = new PROCESS_BASIC_INFORMATION();
+                int returnLength = 0;
+                int status = NtQueryInformationProcess(Process.GetCurrentProcess().Handle, 0, ref processBasicInformation, Marshal.SizeOf<PROCESS_BASIC_INFORMATION>(), out returnLength);
+                if (status != 0)
+                {
+                    return 0;
+                }
+                return (int)processBasicInformation.InheritedFromUniqueProcessId;
+            }
+            catch (Exception ex)
+            {
+                return 0;
+            }
+        }
+
+        struct PROCESS_BASIC_INFORMATION
+        {
+            public IntPtr Reserved1;
+            public IntPtr PebBaseAddress;
+            public IntPtr Reserved2_0;
+            public IntPtr Reserved2_1;
+            public IntPtr UniqueProcessId;
+            public IntPtr InheritedFromUniqueProcessId;
+        }
+        
+        [DllImport("ntdll.dll", CallingConvention = CallingConvention.Winapi)]
+        private static extern int NtQueryInformationProcess(IntPtr processHandle, int processInformationClass, ref PROCESS_BASIC_INFORMATION processInformation, int processInformationLength, out int returnLength);
+
+        static bool SetForegroundWindow(int processId)
+        {
+            try
+            {
+                using (var process = Process.GetProcessById(processId))
+                {
+                    if (process != null)
+                    {
+                        IntPtr mainWindowHandle = process.MainWindowHandle;
+                        if (mainWindowHandle != IntPtr.Zero)
+                        {
+                            return SetForegroundWindow(mainWindowHandle) != 0;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+
+            }
+            return false;
+        }
+
+        [DllImport("user32.dll", CallingConvention = CallingConvention.Winapi, ExactSpelling = true)]
+        static extern int SetForegroundWindow(IntPtr hwnd);
     }
 }

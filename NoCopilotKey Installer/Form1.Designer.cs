@@ -29,6 +29,8 @@ namespace NoCopilotKey_Installer
         /// </summary>
         private void InitializeComponent()
         {
+            this.components = new System.ComponentModel.Container();
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             this.optProgramFiles = new System.Windows.Forms.RadioButton();
             this.groupBox1 = new System.Windows.Forms.GroupBox();
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
@@ -39,6 +41,7 @@ namespace NoCopilotKey_Installer
             this.chkRemapViaRegistry = new System.Windows.Forms.CheckBox();
             this.selectKeyButton = new System.Windows.Forms.Button();
             this.lblKey = new System.Windows.Forms.Label();
+            this.toolTip1 = new System.Windows.Forms.ToolTip(this.components);
             this.groupBox1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             this.SuspendLayout();
@@ -120,13 +123,12 @@ namespace NoCopilotKey_Installer
             // chkRemapViaRegistry
             // 
             this.chkRemapViaRegistry.AutoSize = true;
-            this.chkRemapViaRegistry.Checked = true;
-            this.chkRemapViaRegistry.CheckState = System.Windows.Forms.CheckState.Checked;
             this.chkRemapViaRegistry.Location = new System.Drawing.Point(12, 85);
             this.chkRemapViaRegistry.Name = "chkRemapViaRegistry";
             this.chkRemapViaRegistry.Size = new System.Drawing.Size(186, 30);
             this.chkRemapViaRegistry.TabIndex = 1;
-            this.chkRemapViaRegistry.Text = "&Remap F23 via Windows Registry\r\n(improves reliability)";
+            this.chkRemapViaRegistry.Text = "&Remap F23 via Windows Registry\r\n(Mouseover for more details)";
+            this.toolTip1.SetToolTip(this.chkRemapViaRegistry, resources.GetString("chkRemapViaRegistry.ToolTip"));
             this.chkRemapViaRegistry.UseVisualStyleBackColor = true;
             // 
             // selectKeyButton
@@ -147,6 +149,12 @@ namespace NoCopilotKey_Installer
             this.lblKey.Size = new System.Drawing.Size(50, 13);
             this.lblKey.TabIndex = 7;
             this.lblKey.Text = "Right Ctrl";
+            // 
+            // toolTip1
+            // 
+            this.toolTip1.AutoPopDelay = 32767;
+            this.toolTip1.InitialDelay = 550;
+            this.toolTip1.ReshowDelay = 110;
             // 
             // Form1
             // 
@@ -187,5 +195,6 @@ namespace NoCopilotKey_Installer
         private System.Windows.Forms.CheckBox chkRemapViaRegistry;
         private System.Windows.Forms.Button selectKeyButton;
         private System.Windows.Forms.Label lblKey;
+        private System.Windows.Forms.ToolTip toolTip1;
     }
 }
