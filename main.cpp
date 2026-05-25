@@ -712,7 +712,7 @@ void SetKeyDown(INPUT* input, DWORD VKEY, int flags)
 	if (input->ki.wScan >= 0xE000)
 	{
 		input->ki.wScan &= 0xFF;
-		input->ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
+		input->ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
 	}
 	input->ki.time = 0;
 	input->ki.dwExtraInfo = 0;
