@@ -259,7 +259,7 @@ void InjectKeyDownAsync2(DWORD vKey, bool isExtendedKey)
 	#if DEBUG
 	DebugPrintf("    %d InjectKeyDownAsync2 %s\n", MyGetTickCount(), GetVKeyName(vKey));
 	#endif
-	PostMessage(mainWindow, WM_USER, vKey, 2 + (isExtendedKey ? 4 : 0));
+	PostMessage(mainWindow, WM_USER, vKey, 4 + (isExtendedKey ? KEYEVENTF_EXTENDEDKEY : 0));
 }
 
 void InjectKeyUpAsync(DWORD vKey)
@@ -267,7 +267,7 @@ void InjectKeyUpAsync(DWORD vKey)
 	#if DEBUG
 	DebugPrintf("    %d InjectKeyUpAsync %s\n", MyGetTickCount(), GetVKeyName(vKey));
 	#endif
-	PostMessage(mainWindow, WM_USER, vKey, 1);
+	PostMessage(mainWindow, WM_USER, vKey, KEYEVENTF_KEYUP);
 }
 
 void InjectKeyUpAsync2(DWORD vKey, bool isExtendedKey)
@@ -275,60 +275,56 @@ void InjectKeyUpAsync2(DWORD vKey, bool isExtendedKey)
 	#if DEBUG
 	DebugPrintf("    %d InjectKeyUpAsync2 %s\n", MyGetTickCount(), GetVKeyName(vKey));
 	#endif
-	PostMessage(mainWindow, WM_USER, vKey, 1 + 2 + (isExtendedKey ? 4 : 0));
+	PostMessage(mainWindow, WM_USER, vKey, KEYEVENTF_KEYUP + 4 + (isExtendedKey ? KEYEVENTF_EXTENDEDKEY : 0));
 }
 
-void SetKeyDown(INPUT* input, DWORD VKEY);
-void SetKeyUp(INPUT* input, DWORD VKEY);
-void SetKeyDown2(INPUT* input, DWORD VKEY, bool isExtendedKey);
-void SetKeyUp2(INPUT* input, DWORD VKEY, bool isExtendedKey);
+void SetKeyDown(INPUT* input, DWORD VKEY, int flags);
 
-//Converts a VKEY to a scancode, for when you don't have the extended key flag available
-UINT VKeyToScanCode(WORD vkey)
+//Convert a VKEY code into a scancode.  flags: 0 = default, 4 = not extended key, 5 = extended key
+UINT VKeyToScanCode(DWORD vkey, int flags = 0)
 {
 	UINT result = MapVirtualKeyExW(vkey, MAPVK_VK_TO_VSC_EX, NULL);
+
+	const int NotExtendedKey = 4;
+	const int IsExtendedKey = 4 | KEYEVENTF_EXTENDEDKEY;
+	flags &= IsExtendedKey;
+
 	//These keys: Page Up, Page Down, End, Home, Left, Up, Right, Down, Insert, Delete
 	//are also found on the numpad, so MapVirtualKeyExW will not set the extended key flag for those by default.
-	//We want to set the extended key flag for those (and force the non-numpad version)
+	//If we pressed a numpad key with Num Lock off, we are pressing the non-extended version of the key
+	//Otherwise we are pressing the key that isn't on the numpad (extended key)
 	if ((vkey >= VK_PRIOR && vkey <= VK_DOWN) ||
 		vkey == VK_INSERT || vkey == VK_DELETE ||
 		vkey == VK_NUMLOCK || vkey == VK_RSHIFT)
 	{
-		result |= 0xE000;
-	}
-	return result;
-}
-
-//Converts a VKEY to a scancode, for when you do have the extended key flag available
-UINT VKeyToScanCode2(WORD vkey, int isExtended)
-{
-	UINT result = VKeyToScanCode(vkey);
-	//Force extended key for Numpad Enter
-	if (vkey == VK_RETURN && isExtended)
-	{
-		result |= 0xE000;
-	}
-	//Change Sysreq key from Print Screen key back to Sysreq key
-	if (vkey == VK_SNAPSHOT && isExtended)
-	{
-		result = 0xE037;
-	}
-	//Change Pause key back
-	if (vkey == VK_PAUSE && !isExtended)
-	{
-		result = 0x45;
-	}
-	//When pressing the numpad keys with numlock off, extended key flag is normally off
-	//But my function VKeyToScanCode above forces the extended key flag on (not pressing the numpad version)
-	//Force the extended key flag off, and return them to numpad versions
-	if (!isExtended)
-	{
-		if ((vkey >= VK_PRIOR && vkey <= VK_DOWN) ||
-			vkey == VK_INSERT || vkey == VK_DELETE ||
-			vkey == VK_NUMLOCK || vkey == VK_RSHIFT) //page up, page down, end, home, left, up, right, down, insert, delete
+		if (flags != NotExtendedKey)
 		{
-			result &= 0xFF;
+			//Normal arrow keys, Page Up keys, etc (not numpad keys)
+			return result | 0xE000;
 		}
+		else
+		{
+			//Numpad keys with num lock off
+			return result;
+		}
+	}
+	if (flags == IsExtendedKey)
+	{
+		//When extended key flag is set, it's Numpad Enter instead of regular enter.
+		if (vkey == VK_RETURN)
+		{
+			return result | 0xE000;
+		}
+		//When extended key flag is set, it's the sysreq key instead of the printscreen key
+		if (vkey == VK_SNAPSHOT)
+		{
+			return 0xE037;
+		}
+	}
+	//VK_PAUSE has the wrong scancode for some reason?
+	if (vkey == VK_PAUSE && (flags == NotExtendedKey))
+	{
+		return 0x45;
 	}
 	return result;
 }
@@ -340,32 +336,11 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_USER:
 		{
-			bool isRelease = 0 != (lParam & 1);
-			bool haveExtendedKey = 0 != (lParam & 2);
-			bool isExtendedKey = 0 != (lParam & 4);
+			bool isExtendedKey = 0 != (lParam & KEYEVENTF_EXTENDEDKEY); //1
+			bool isRelease = 0 != (lParam & KEYEVENTF_KEYUP); //2
+			bool haveExtendedKey = 0 != (lParam & 4);
 			bool isDebugKey = 0 != (lParam & 8);
-			if (isRelease)
-			{
-				if (!haveExtendedKey)
-				{
-					SetKeyUp(&input, (DWORD)wParam);
-				}
-				else
-				{
-					SetKeyUp2(&input, (DWORD)wParam, isExtendedKey);
-				}
-			}
-			else
-			{
-				if (!haveExtendedKey)
-				{
-					SetKeyDown(&input, (DWORD)wParam);
-				}
-				else
-				{
-					SetKeyDown2(&input, (DWORD)wParam, isExtendedKey);
-				}
-			}
+			SetKeyDown(&input, (DWORD)wParam, (int)lParam);
 			#if TEST
 			if (isDebugKey)
 			{
@@ -728,12 +703,12 @@ void CancelTimer()
 	}
 }
 
-void SetKeyDown2(INPUT* input, DWORD VKEY, bool isExtendedKey)
+void SetKeyDown(INPUT* input, DWORD VKEY, int flags)
 {
 	input->type = INPUT_KEYBOARD;
 	input->ki.wVk = (WORD)VKEY;
-	input->ki.wScan = (WORD)VKeyToScanCode2((WORD)VKEY, isExtendedKey);
-	input->ki.dwFlags = 0;
+	input->ki.wScan = (WORD)VKeyToScanCode((WORD)VKEY, flags);
+	input->ki.dwFlags = flags & KEYEVENTF_KEYUP;
 	if (input->ki.wScan >= 0xE000)
 	{
 		input->ki.wScan &= 0xFF;
@@ -741,33 +716,6 @@ void SetKeyDown2(INPUT* input, DWORD VKEY, bool isExtendedKey)
 	}
 	input->ki.time = 0;
 	input->ki.dwExtraInfo = 0;
-}
-
-void SetKeyUp2(INPUT* input, DWORD VKEY, bool isExtendedKey)
-{
-	SetKeyDown2(input, VKEY, isExtendedKey);
-	input->ki.dwFlags |= KEYEVENTF_KEYUP;
-}
-
-void SetKeyDown(INPUT* input, DWORD VKEY)
-{
-	input->type = INPUT_KEYBOARD;
-	input->ki.wVk = (WORD)VKEY;
-	input->ki.wScan = (WORD)VKeyToScanCode((WORD)VKEY);
-	input->ki.dwFlags = 0;
-	if (input->ki.wScan >= 0xE000)
-	{
-		input->ki.wScan &= 0xFF;
-		input->ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
-	}
-	input->ki.time = 0;
-	input->ki.dwExtraInfo = 0;
-}
-
-void SetKeyUp(INPUT* input, DWORD VKEY)
-{
-	SetKeyDown(input, VKEY);
-	input->ki.dwFlags |= KEYEVENTF_KEYUP;
 }
 
 bool HaveSuppressedKeys()
@@ -1247,7 +1195,7 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 		DebugPrintf("%d %s%s0x%02X %s\n", arrivalTime, injectedMessage, pressedMessage, keyCode, GetVKeyName(keyCode));
 		//DWORD extendedKey = ((hookStruct->flags & LLKHF_EXTENDED) ? 0xE000 : 0);
 		//DWORD scanCode = hookStruct->scanCode + extendedKey;
-		//DebugPrintf("debug: scancode %02X -> %02X\n", scanCode, VKeyToScanCode2(keyCode, extendedKey));
+		//DebugPrintf("debug: scancode %02X -> %02X\n", scanCode, VKeyToScanCode(keyCode, 4 + (hookStruct->flags & LLKHF_EXTENDED)));
 	}
 	#endif //DEBUG
 	LRESULT result = MyKeyboardProc2(code, wParam, lParam);
