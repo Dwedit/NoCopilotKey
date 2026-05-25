@@ -11,173 +11,59 @@ struct KeyBindingsHeader
 	DWORD numberOfEntries;
 };
 
-int ReadKeyBindings(KeyBindingsEntry arr[], int maxArrCount)
+struct KeyBindingsEntry
 {
-	const DWORD maxBufferSize = 8192;
-	const DWORD maxCount = (maxBufferSize - sizeof(KeyBindingsHeader) - sizeof(DWORD)) / sizeof(KeyBindingsEntry);
-	BYTE buffer[maxBufferSize];
-	DWORD bufferSize = maxBufferSize;
-	DWORD type = 0;
-	LSTATUS status = RegGetValueA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\Keyboard Layout", "Scancode Map", RRF_RT_REG_BINARY, &type, &buffer[0], &bufferSize);
-	if (status == ERROR_FILE_NOT_FOUND)
-	{
-		return 0;
-	}
-	else if (status == ERROR_UNSUPPORTED_TYPE)
-	{
-		return 0;
-	}
-	else if (status != ERROR_SUCCESS)
-	{
-		return 0;
-	}
-	if (bufferSize < 20)
-	{
-		return 0;
-	}
-	KeyBindingsHeader* pHeader = (KeyBindingsHeader*)buffer;
-	//using volatile to prevent importing memcpy
-	KeyBindingsEntry* volatile pEntry = (KeyBindingsEntry*volatile)(buffer + sizeof(KeyBindingsHeader));
-	int count = pHeader->numberOfEntries - 1;
-	if (count > maxArrCount)
-	{
-		count = maxArrCount;
-	}
-	if (count < 0 || count > maxCount ||
-		count * sizeof(KeyBindingsEntry) + sizeof(KeyBindingsHeader) + sizeof(DWORD) < bufferSize)
-	{
-		return 0;
-	}
-	DWORD* pTerminator = (DWORD*)(buffer + sizeof(KeyBindingsHeader) + count * sizeof(KeyBindingsEntry));
-	if (*pTerminator != 0)
-	{
-		return 0;
-	}
-	for (int i = 0; i < count; i++)
-	{
-		arr[i] = *pEntry;
-		pEntry++;
-	}
-	return count;
-}
-
-bool WriteKeyBindings(KeyBindingsEntry arr[], int count)
-{
-	const DWORD maxBufferSize = 8192;
-	const DWORD maxCount = (maxBufferSize - sizeof(KeyBindingsHeader) - sizeof(DWORD)) / sizeof(KeyBindingsEntry);
-	if (count < 0 || count > maxCount)
-	{
-		return false;
-	}
-	bool result = false;
-	HKEY key = NULL;
-	LSTATUS status;
-	if (count == 0)
-	{
-		//Delete all key bindings when count is 0
-		status = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\Keyboard Layout", 0, KEY_ALL_ACCESS, &key);
-		if (status != ERROR_SUCCESS)
-		{
-			result = true;
-			goto done;
-		}
-		DWORD type = 0;
-		status = RegGetValueA(key, NULL, "Scancode Map", RRF_RT_ANY, &type, NULL, NULL);
-		if (status == ERROR_SUCCESS)
-		{
-			status = RegDeleteValueA(key, "Scancode Map");
-			if (status == ERROR_SUCCESS)
-			{
-				result = true;
-				goto done;
-			}
-		}
-		else if (status == ERROR_FILE_NOT_FOUND)
-		{
-			result = true;
-			goto done;
-		}
-		goto done;
-	}
-	else
-	{
-		//Write a Key Bindings object to the registry
-		BYTE buffer[maxBufferSize];
-		BYTE* p = &buffer[0];
-		KeyBindingsHeader* header = (KeyBindingsHeader*)p;
-		header->version = 0;
-		header->headerFlags = 0;
-		header->numberOfEntries = count + 1;
-		p += sizeof(KeyBindingsHeader);
-		//using volatile to prevent importing memcpy
-		KeyBindingsEntry*volatile pEntry = (KeyBindingsEntry*volatile)p;
-		for (int i = 0; i < count; i++)
-		{
-			*pEntry = arr[i];
-			pEntry++;
-		}
-		p = (BYTE*)pEntry;
-		DWORD* p2 = (DWORD*)p;
-		*p2 = 0;
-		p += sizeof(DWORD);
-		int contentSize = p - buffer;
-
-		status = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\Keyboard Layout", 0, KEY_ALL_ACCESS, &key);
-		if (status == ERROR_ACCESS_DENIED)
-		{
-			goto done;
-		}
-		if (status == ERROR_FILE_NOT_FOUND)
-		{
-			status = RegCreateKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\Keyboard Layout", 0, NULL, NULL, KEY_ALL_ACCESS, NULL, &key, NULL);
-		}
-		if (status != ERROR_SUCCESS)
-		{
-			goto done;
-		}
-		status = RegSetValueExA(key, "Scancode Map", 0, REG_BINARY, &buffer[0], contentSize);
-		if (status == ERROR_SUCCESS)
-		{
-			result = true;
-			goto done;
-		}
-		goto done;
-	}
-done:
-	if (key != NULL)
-	{
-		RegCloseKey(key);
-		key = NULL;
-	}
-	return result;
-}
+	WORD destinationKey;
+	WORD sourceKey;
+};
 
 bool RegisterRemappedKey(WORD scancodeToRemap, WORD scancodeToChangeTo)
 {
 	const DWORD maxBufferSize = 8192;
-	const DWORD maxCount = (maxBufferSize - sizeof(KeyBindingsHeader) - sizeof(DWORD)) / sizeof(KeyBindingsEntry);
+	const DWORD minBufferSize = sizeof(KeyBindingsEntry) + sizeof(KeyBindingsHeader) + sizeof(DWORD);
+	const DWORD maxCount = (maxBufferSize - 3 * sizeof(DWORD) - sizeof(KeyBindingsHeader) - sizeof(DWORD)) / sizeof(KeyBindingsEntry);
 	if (scancodeToRemap == 0)
 	{
 		return false;
 	}
-	KeyBindingsEntry arr[maxCount];
-	int count = ReadKeyBindings(arr, maxCount);
-	//check for scancodeToRemap, if it exists replace it, otherwise add it to the list
-	bool found = false;
+	DWORD buffer[maxBufferSize / sizeof(DWORD)] = {};
+	DWORD* const _arr = (DWORD*)((BYTE*)buffer + sizeof(KeyBindingsHeader));
+	KeyBindingsHeader* const header = (KeyBindingsHeader*)buffer;
+	KeyBindingsEntry* const arr = (KeyBindingsEntry*)_arr;
+	DWORD &count = header->numberOfEntries;
+	//note: count includes 0 termiantor at the end
+
+	DWORD bufferSize = maxBufferSize;
+	DWORD type = 0;
+	LSTATUS status = RegGetValueA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\Keyboard Layout", "Scancode Map", RRF_RT_REG_BINARY, &type, &buffer[0], &bufferSize);
+	if (status == ERROR_SUCCESS &&
+		bufferSize >= minBufferSize &&
+		count < maxCount &&
+		header->version == 0 &&
+		header->headerFlags == 0 &&
+		_arr[count - 1] == 0)
+	{
+		//validated
+	}
+	else
+	{
+		memset(buffer, 0, maxBufferSize);
+		count = 1;
+	}
+
+	//check for scancodeToRemap, if it exists, replace it, otherwise add it to the list
 	bool changed = false;
-	for (int i = 0; i < count; i++)
+	for (DWORD i = 0;; i++)
 	{
 		if (arr[i].sourceKey == scancodeToRemap)
 		{
-			found = true;
 			if (arr[i].destinationKey != scancodeToChangeTo)
 			{
 				if (scancodeToChangeTo == scancodeToRemap)
 				{
-					//swap with last element, remove last element
-					KeyBindingsEntry t = arr[i];
-					arr[i] = arr[count - 1];
-					arr[count - 1] = t;
+					//move last element to this slot
+					_arr[i] = _arr[count - 2];
+					_arr[count - 2] = 0;
 					count--;
 				}
 				else
@@ -189,17 +75,50 @@ bool RegisterRemappedKey(WORD scancodeToRemap, WORD scancodeToChangeTo)
 			}
 			break;
 		}
-	}
-	if (!found && count < maxCount && scancodeToChangeTo != scancodeToRemap)
-	{
-		arr[count].sourceKey = scancodeToRemap;
-		arr[count].destinationKey = scancodeToChangeTo;
-		count++;
-		changed = true;
+		else if (_arr[i] == 0)
+		{
+			if (count + 1 < maxCount)
+			{
+				_arr[i] = ((DWORD)scancodeToChangeTo | ((DWORD)scancodeToRemap << 16));
+				_arr[count] = 0;
+				count++;
+				changed = true;
+			}
+			else
+			{
+				return false;
+			}
+			break;
+		}
 	}
 	if (changed)
 	{
-		return WriteKeyBindings(arr, count);
+		HKEY key = NULL;
+		bool result = false;
+		status = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\Keyboard Layout", 0, KEY_ALL_ACCESS, &key);
+		if (status == ERROR_FILE_NOT_FOUND)
+		{
+			status = RegCreateKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\Keyboard Layout", 0, NULL, NULL, KEY_ALL_ACCESS, NULL, &key, NULL);
+		}
+		if (status != ERROR_SUCCESS)
+		{
+			return false;
+		}
+		if (count == 0)
+		{
+			//Delete all key bindings when count is 0
+			status = RegDeleteValueA(key, "Scancode Map");
+		}
+		else
+		{
+			status = RegSetValueExA(key, "Scancode Map", 0, REG_BINARY, (const BYTE*)&buffer[0], (count + 4) * sizeof(DWORD));
+		}
+		RegCloseKey(key);
+		if (status == ERROR_SUCCESS)
+		{
+			result = true;
+		}
+		return result;
 	}
 	else
 	{
