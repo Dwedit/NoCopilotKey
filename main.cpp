@@ -130,6 +130,7 @@ HWND mainWindow;
 HHOOK globalKeyboardHook;
 
 #if REINSTALL_HOOK
+const DWORD reattachTimerDefaultInterval = 1000;
 UINT_PTR reattachTimer;
 #endif
 
@@ -532,7 +533,7 @@ int APIENTRY Main()
 	int lastError = GetLastError();
 
 	#if REINSTALL_HOOK
-	reattachTimer = SetTimer(mainWindow, 2, 1000, &TimerHandlerToReattachHook);
+	reattachTimer = SetTimer(mainWindow, 2, reattachTimerDefaultInterval, &TimerHandlerToReattachHook);
 	#endif //REINSTALL_HOOK
 
 	#if WATCH_ACTIVE_WINDOW
@@ -560,7 +561,7 @@ int APIENTRY Main()
 #if REINSTALL_HOOK
 void CALLBACK TimerHandlerToReattachHook(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 {
-	reattachTimer = SetTimer(mainWindow, reattachTimer, 1000, &TimerHandlerToReattachHook);
+	reattachTimer = SetTimer(mainWindow, reattachTimer, reattachTimerDefaultInterval, &TimerHandlerToReattachHook);
 	UnhookWindowsHookEx(globalKeyboardHook);
 	globalKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, &MyKeyboardProc, GetModuleHandle(NULL), 0);
 }
