@@ -1,3 +1,4 @@
+#include "config.h"
 #define WIN32_LEAN_AND_MEAN 1
 #define _CRT_SECURE_NO_WARNINGS 1
 #include <stdint.h>
@@ -12,33 +13,12 @@ typedef uint32_t u32;
 
 int my_strnicmp(const wchar_t* str1, const char* str2, int limit);
 
-//Test mode: Make backquote act as copilot key  (for testing on a keyboard which doesn't have a copilot key)
-//Also allows testing invalid sequences
-#define TEST 0
 
-//Debug mode: adds a console and logging (enabled for debug builds)
-#define DEBUG _DEBUG
-
-//Whether to try to handle invalid key sequences
-#define HANDLE_INVALID 1
-
-//Whether to include Alt + Ctrl + Del code (Smart App Control doesn't like it)
-#define USE_SAS 0
-
-//Whether to make a build which does not interfere with the keyboard and only displays debug log messages
-#define DO_NOTHING 0
-
-//Whether to reinstall the keyboard hook every 1 second (to override programs which install their own key hooks, such as Remote Desktop Connection)
-#define REINSTALL_HOOK 1
-
-//Whether to use Raw Input to look for keys that got past the keyboard hook (useless)
-#define USE_RAW_INPUT 0
-
-//Whether to watch the active window
-#define WATCH_ACTIVE_WINDOW 1
-
-//The timeout for the three key sequence - If it takes longer than this, don't treat it as a copilot key press/release
-const int KeyChordTimeout = 30;
+#if HANDLE_INVALID
+//Only used detecting invalid key sequences.
+//The timeout for the three key sequence, only used for invalid  - If it takes longer than this, don't treat it as a copilot key press/release
+const int InvalidSequenceKeyChordTimeout = 30;
+#endif
 
 //The timeout for the three key sequence timer, used for transitions from LWIN -> LSHIFT -> F23
 const int KeyChordTimerTimeout = 100;
@@ -171,9 +151,16 @@ int pendingInjectedLeftShiftRelease = 0;
 bool leftWindowsSuppressed;
 bool leftShiftSuppressed;
 //bool f23Suppressed;
+
+#if ENABLE_CUSTOM_KEY
 bool allowTargetKeyToReplaceF23 = false;
 DWORD targetVKey;
 bool targetVKeyNoRepeat;
+#else
+const bool allowTargetKeyToReplaceF23 = false;
+const DWORD targetVKey = VK_RCONTROL;
+const bool targetVKeyNoRepeat = true;
+#endif
 bool targetVKeyDown = false;
 
 #if USE_SAS
@@ -437,8 +424,10 @@ bool IsWindowAdmin(HWND hwnd);
 
 int APIENTRY Main()
 {
+	#if ENABLE_CUSTOM_KEY
 	targetVKey = VK_RCONTROL;
 	targetVKeyNoRepeat = true;
+	#endif
 
 	#if HANDLE_INVALID
 	outOfPressSequenceTimestamp = GetTickCount();
@@ -448,16 +437,22 @@ int APIENTRY Main()
 
 	commandLine = GetCommandLineW();
 	argv = CommandLineToArgvW(commandLine, &argc);
-
+	
+	#if ENABLE_REGISTRY_REMAPPING
 	bool wantToRegistryRemap = false;
+	#endif
 
 	for (int i = 1; i < argc; i++)
 	{
+		#if ENABLE_REGISTRY_REMAPPING
 		if (0 == my_strnicmp(argv[i], "--registry-remap", 255))
 		{
 			wantToRegistryRemap = true;
+			continue;
 		}
-		else if (0 == my_strnicmp(argv[i], "--key", 255) && i + 1 < argc)
+		#endif
+		#if ENABLE_CUSTOM_KEY
+		if (0 == my_strnicmp(argv[i], "--key", 255) && i + 1 < argc)
 		{
 			i++;
 			const wchar_t* const keyName = argv[i];
@@ -479,7 +474,9 @@ int APIENTRY Main()
 				}
 			}
 		}
+		#endif
 	}
+	#if ENABLE_REGISTRY_REMAPPING
 	if (wantToRegistryRemap)
 	{
 		int targetScanCode = VKeyToScanCode(targetVKey);
@@ -487,7 +484,7 @@ int APIENTRY Main()
 		RegisterRemappedKey(0x6E, targetScanCode);
 		allowTargetKeyToReplaceF23 = true;
 	}
-
+	#endif
 	if (!DO_NOTHING)
 	{
 		HANDLE mutex = OpenMutexA(SYNCHRONIZE, false, "Mutex for NoCopilotKey");
@@ -855,7 +852,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 	if (outOfPressSequence)
 	{
 		DWORD outOfPressSequenceElapsedTime = GetTickCount() - outOfPressSequenceTimestamp;
-		if (outOfPressSequenceElapsedTime > KeyChordTimeout)
+		if (outOfPressSequenceElapsedTime > InvalidSequenceKeyChordTimeout)
 		{
 			outOfPressSequence = false;
 		}
@@ -863,7 +860,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 	if (outOfReleaseSequence)
 	{
 		DWORD outOfReleaseSequenceElapsedTime = GetTickCount() - outOfReleaseSequenceTimestamp;
-		if (outOfReleaseSequenceElapsedTime > KeyChordTimeout)
+		if (outOfReleaseSequenceElapsedTime > InvalidSequenceKeyChordTimeout)
 		{
 			outOfReleaseSequence = false;
 		}
@@ -943,7 +940,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				outOfPressSequenceSuppressLeftShift = false;
 				//Possibility of bad sequence: LShift LWin F23 or LWin F23 LShift
 				//Was LShift last pressed within 30ms?  (LShift LWin F23)
-				if (leftShiftDown && ((GetTickCount() - leftShiftTimestamp) <= KeyChordTimeout))
+				if (leftShiftDown && ((GetTickCount() - leftShiftTimestamp) <= InvalidSequenceKeyChordTimeout))
 				{
 					//Was LShift previously in a pressed state?
 					if (leftShiftDown2)
@@ -1060,7 +1057,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			outOfPressSequenceSuppressLeftShift = false;
 			//To handle the cases where LShift comes before F23:
 			//left shift may have been pressed with 30ms, if it was, release left shift unless it was held down
-			if (leftShiftDown && ((GetTickCount() - leftShiftTimestamp) <= KeyChordTimeout))
+			if (leftShiftDown && ((GetTickCount() - leftShiftTimestamp) <= InvalidSequenceKeyChordTimeout))
 			{
 				//Was LShift previously in a pressed state?
 				if (leftShiftDown2)

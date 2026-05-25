@@ -178,6 +178,7 @@
     <ClCompile Include="VKeyNameToKeyCode.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="config.h" />
     <ClInclude Include="RegistryKeyRemapping.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
