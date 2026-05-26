@@ -21,12 +21,12 @@ bool RegisterRemappedKey(WORD scancodeToRemap, WORD scancodeToChangeTo)
 {
 	const DWORD maxBufferSize = 8192;
 	const DWORD minBufferSize = sizeof(KeyBindingsEntry) + sizeof(KeyBindingsHeader) + sizeof(DWORD);
-	const DWORD maxCount = (maxBufferSize - 3 * sizeof(DWORD) - sizeof(KeyBindingsHeader) - sizeof(DWORD)) / sizeof(KeyBindingsEntry);
+	const DWORD maxCount = (maxBufferSize - sizeof(KeyBindingsHeader)) / sizeof(KeyBindingsEntry);
 	if (scancodeToRemap == 0)
 	{
 		return false;
 	}
-	DWORD buffer[maxBufferSize / sizeof(DWORD)] = {};
+	DWORD buffer[maxBufferSize / sizeof(DWORD)];
 	DWORD* const _arr = (DWORD*)((BYTE*)buffer + sizeof(KeyBindingsHeader));
 	KeyBindingsHeader* const header = (KeyBindingsHeader*)buffer;
 	KeyBindingsEntry* const arr = (KeyBindingsEntry*)_arr;
@@ -41,6 +41,7 @@ bool RegisterRemappedKey(WORD scancodeToRemap, WORD scancodeToChangeTo)
 		count < maxCount &&
 		header->version == 0 &&
 		header->headerFlags == 0 &&
+		count * sizeof(DWORD) + sizeof(KeyBindingsHeader) <= bufferSize &&
 		_arr[count - 1] == 0)
 	{
 		//validated
@@ -75,7 +76,7 @@ bool RegisterRemappedKey(WORD scancodeToRemap, WORD scancodeToChangeTo)
 			}
 			break;
 		}
-		else if (_arr[i] == 0)
+		else if (i == count - 1)
 		{
 			if (count + 1 < maxCount)
 			{
@@ -104,14 +105,14 @@ bool RegisterRemappedKey(WORD scancodeToRemap, WORD scancodeToChangeTo)
 		{
 			return false;
 		}
-		if (count == 0)
+		if (count <= 1)
 		{
-			//Delete all key bindings when count is 0
+			//Delete all key bindings when there aren't any
 			status = RegDeleteValueA(key, "Scancode Map");
 		}
 		else
 		{
-			status = RegSetValueExA(key, "Scancode Map", 0, REG_BINARY, (const BYTE*)&buffer[0], (count + 4) * sizeof(DWORD));
+			status = RegSetValueExA(key, "Scancode Map", 0, REG_BINARY, (const BYTE*)&buffer[0], (count + 3) * sizeof(DWORD));
 		}
 		RegCloseKey(key);
 		if (status == ERROR_SUCCESS)
