@@ -218,18 +218,6 @@ namespace NoCopilotKey_Installer
                 args.Add("--install-to-user-program-files");
                 args.Add("--register-as-startup-item");
             }
-            if (!Installer.IsAdmin() && KeyBindings.GetInitialF23Mapping() == 0 && KeyBindings.GetCurrentF23Mapping() == 0)
-            {
-                var dialogResult = MessageBox.Show("The F23 key is currently disabled by registry.  NoCopilotKey will not work unless the F23 key is enabled.  Enable the F23 Key? (Requires Admin)", Application.ProductName, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
-                if (dialogResult == DialogResult.Yes)
-                {
-                    needAdmin = true;
-                }
-                else
-                {
-                    return;
-                }
-            }
             if (this.chkRemapViaRegistry.Enabled && this.chkRemapViaRegistry.Checked)
             {
                 args.Add("--registry-remap");

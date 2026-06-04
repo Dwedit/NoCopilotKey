@@ -826,11 +826,13 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 	bool isF23 = keyCode == VK_F23;
 	if (keyCode == 0xFF)
 	{
-		USHORT scanCode = hookStruct->scanCode | (hookStruct->flags & LLKHF_EXTENDED ? 0xE000 : 0);
+		//If the key is remapped to a scancode which does not correspond to a vkey, match the scancode instead
+		USHORT scanCode = hookStruct->scanCode | (isExtendedKey ? 0xE000 : 0);
 		isF23 |= (scanCode == f23ScanCode) || (scanCode == f23ScanCode_alternate);
 	}
 	else
 	{
+		//Otherwise try to match the vkey
 		isF23 |= (keyCode == f23VKey) || (keyCode == f23VKey_alternate);
 	}
 	
