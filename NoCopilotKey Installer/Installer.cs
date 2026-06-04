@@ -229,13 +229,13 @@ namespace NoCopilotKey_Installer
             stopStatus = StopProgram();
             if (stopStatus.HasFlag(StopProgramStatus.FailedToStop))
             {
-                MessageBox.Show("Failed to stop other running instances");
+                MessageBox.Show("Failed to stop other running instances.\r\nIf there is another instance running (such as a renamed EXE), end the process using Task Manager and try installing again.\r\nOtherwise, try restarting or logging off.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Stop);
             }
             Process.Start(exePath, arguments);
 
             if (!haveF23Mapping && doRegistryRemap)
             {
-                MessageBox.Show("Using the registry to remap the F23 Key will take effect once the computer is restarted.\r\nUntil then, the program will remap the Copilot key by using only global keyboard hooks.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("Using the registry to remap the F23 Key will take effect once you restart or log off.\r\nUntil then, the program will remap the Copilot key by using only global keyboard hooks.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
 
             SetParentProcessForegroundWindow();
