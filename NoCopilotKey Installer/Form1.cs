@@ -75,10 +75,48 @@ namespace NoCopilotKey_Installer
                 this.lblKey.Text = this.selectedFriendlyName;
                 this.chkRemapViaRegistry.Checked = Installer.UseRegistryRemap(args);
             }
+            //if (!isInstalled)
+            //{
+            //    var scancode = KeyBindings.GetKeyMapping(KeyBindings.SCANCODE_F23);
+            //    if (scancode != 0)
+            //    {
+            //        chkRemapViaRegistry.Checked = true;
+            //        var vkey = KeySelectionForm.ScancodeToVKey(scancode);
+            //        this.SelectCustomKey(vkey);
+            //    }
+            //    else
+            //    {
+            //        chkRemapViaRegistry.Checked = false;
+            //    }
+            //}
 
+            installButton.Text = "Install";
             if (isInstalled)
             {
-                label1.Text = "Program is already installed." + Environment.NewLine + "To change the installation mode, uninstall the program first.";
+                var installedVersion = Installer.GetInstalledVersion();
+                var myVersion = new Version(Application.ProductVersion);
+                if (installedVersion != null)
+                {
+                    string versionString = installedVersion.ToString();
+                    label1.Text = "Version " + versionString + "is currently installed." + Environment.NewLine + "To change whether the program is installed as Administrator or Normal User, uninstall the program first.";
+                    if (myVersion > installedVersion)
+                    {
+                        installButton.Text = "Upgrade";
+                    }
+                    if (myVersion < installedVersion)
+                    {
+                        installButton.Text = "Downgrade";
+                    }
+                    if (myVersion == installedVersion)
+                    {
+                        installButton.Text = "Apply";
+                    }
+                }
+                else
+                {
+                    label1.Text = "Program is currently installed." + Environment.NewLine + "To change the installation mode, uninstall the program first.";
+                }
+
             }
             else
             {
@@ -180,6 +218,18 @@ namespace NoCopilotKey_Installer
                 args.Add("--install-to-user-program-files");
                 args.Add("--register-as-startup-item");
             }
+            if (!Installer.IsAdmin() && KeyBindings.GetInitialF23Mapping() == 0 && KeyBindings.GetCurrentF23Mapping() == 0)
+            {
+                var dialogResult = MessageBox.Show("The F23 key is currently disabled by registry.  NoCopilotKey will not work unless the F23 key is enabled.  Enable the F23 Key? (Requires Admin)", Application.ProductName, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (dialogResult == DialogResult.Yes)
+                {
+                    needAdmin = true;
+                }
+                else
+                {
+                    return;
+                }
+            }
             if (this.chkRemapViaRegistry.Enabled && this.chkRemapViaRegistry.Checked)
             {
                 args.Add("--registry-remap");
@@ -250,6 +300,13 @@ namespace NoCopilotKey_Installer
         string selectedVKey = "VK_RCONTROL";
         string selectedFriendlyName = "Right Ctrl";
 
+        void SelectCustomKey(uint vkey)
+        {
+            this.selectedVKey = KeySelectionForm.GetVKeyName(vkey);
+            this.selectedFriendlyName = KeySelectionForm.GetFriendlyNameForVKey(this.selectedVKey);
+            this.lblKey.Text = this.selectedFriendlyName;
+        }
+
         void SelectCustomKey()
         {
             using (var keySelectionForm = new KeySelectionForm())
@@ -260,7 +317,6 @@ namespace NoCopilotKey_Installer
                     this.selectedVKey = keySelectionForm.SelectedVKey;
                     this.selectedFriendlyName = keySelectionForm.SelectedFriendlyName;
                     this.lblKey.Text = this.selectedFriendlyName;
-                    //this.selectKeyButton.Text = this.selectedVKey;
                 }
             }
         }

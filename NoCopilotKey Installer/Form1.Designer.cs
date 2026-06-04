@@ -115,7 +115,7 @@ namespace NoCopilotKey_Installer
             // 
             this.label1.Location = new System.Drawing.Point(7, 147);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(191, 57);
+            this.label1.Size = new System.Drawing.Size(195, 57);
             this.label1.TabIndex = 4;
             this.label1.Text = "To support applications which run as Administrator, NoCopilotKey must be installe" +
     "d to run as Administrator.\r\n";
@@ -161,7 +161,7 @@ namespace NoCopilotKey_Installer
             this.AcceptButton = this.installButton;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(212, 241);
+            this.ClientSize = new System.Drawing.Size(210, 241);
             this.Controls.Add(this.lblKey);
             this.Controls.Add(this.selectKeyButton);
             this.Controls.Add(this.chkRemapViaRegistry);

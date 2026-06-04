@@ -11,6 +11,9 @@ typedef uint32_t u32;
 #include <aclapi.h>
 #include "RegistryKeyRemapping.h"
 
+#define HAVE_EXTENDED_KEY 4
+#define IS_DEBUG_KEY 8
+
 int my_strnicmp(const wchar_t* str1, const char* str2, int limit);
 
 
@@ -153,12 +156,18 @@ bool leftWindowsSuppressed;
 bool leftShiftSuppressed;
 //bool f23Suppressed;
 
+#if ENABLE_REGISTRY_REMAPPING
+DWORD f23VKey;
+DWORD f23VKey_alternate;
+#else
+const DWORD f23VKey = VK_F23;
+const DWORD f23VKey_alternate = VK_F23;
+#endif
+
 #if ENABLE_CUSTOM_KEY
-bool allowTargetKeyToReplaceF23 = false;
 DWORD targetVKey;
 bool targetVKeyNoRepeat;
 #else
-const bool allowTargetKeyToReplaceF23 = false;
 const DWORD targetVKey = VK_RCONTROL;
 const bool targetVKeyNoRepeat = true;
 #endif
@@ -222,25 +231,25 @@ void DebugPrintf(const char* format, ...)
 void InjectCopilotKeyDown()
 {
 	//proper sequence:
-	PostMessage(mainWindow, WM_USER, VK_LWIN, 8);
-	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 8);
-	PostMessage(mainWindow, WM_USER, VK_F23, 8);
+	PostMessage(mainWindow, WM_USER, VK_LWIN, IS_DEBUG_KEY);
+	PostMessage(mainWindow, WM_USER, VK_LSHIFT, IS_DEBUG_KEY);
+	PostMessage(mainWindow, WM_USER, f23VKey, IS_DEBUG_KEY);
 
 	//example invalid sequence:
-	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 8);
-	//PostMessage(mainWindow, WM_USER, VK_F23, 8);
+	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, IS_DEBUG_KEY);
+	//PostMessage(mainWindow, WM_USER, f23VKey, IS_DEBUG_KEY);
 
 	//another example invalid sequence:
-	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, 8);
-	//PostMessage(mainWindow, WM_USER, VK_LWIN, 8);
-	//PostMessage(mainWindow, WM_USER, VK_F23, 8);
+	//PostMessage(mainWindow, WM_USER, VK_LSHIFT, IS_DEBUG_KEY);
+	//PostMessage(mainWindow, WM_USER, VK_LWIN, IS_DEBUG_KEY);
+	//PostMessage(mainWindow, WM_USER, f23Vkey, IS_DEBUG_KEY);
 }
 void InjectCopilotKeyUp()
 {
 	//proper sequence:
-	PostMessage(mainWindow, WM_USER, VK_F23, 9);
-	PostMessage(mainWindow, WM_USER, VK_LSHIFT, 9);
-	PostMessage(mainWindow, WM_USER, VK_LWIN, 9);
+	PostMessage(mainWindow, WM_USER, f23VKey, IS_DEBUG_KEY | KEYEVENTF_KEYUP);
+	PostMessage(mainWindow, WM_USER, VK_LSHIFT, IS_DEBUG_KEY | KEYEVENTF_KEYUP);
+	PostMessage(mainWindow, WM_USER, VK_LWIN, IS_DEBUG_KEY | KEYEVENTF_KEYUP);
 	
 	//No known invalid sequences have been seen so far?
 }
@@ -259,7 +268,7 @@ void InjectKeyDownAsync2(DWORD vKey, bool isExtendedKey)
 	#if DEBUG
 	DebugPrintf("    %d InjectKeyDownAsync2 %s\n", MyGetTickCount(), GetVKeyName(vKey));
 	#endif
-	PostMessage(mainWindow, WM_USER, vKey, 4 + (isExtendedKey ? KEYEVENTF_EXTENDEDKEY : 0));
+	PostMessage(mainWindow, WM_USER, vKey, HAVE_EXTENDED_KEY + (isExtendedKey ? KEYEVENTF_EXTENDEDKEY : 0));
 }
 
 void InjectKeyUpAsync(DWORD vKey)
@@ -275,7 +284,7 @@ void InjectKeyUpAsync2(DWORD vKey, bool isExtendedKey)
 	#if DEBUG
 	DebugPrintf("    %d InjectKeyUpAsync2 %s\n", MyGetTickCount(), GetVKeyName(vKey));
 	#endif
-	PostMessage(mainWindow, WM_USER, vKey, KEYEVENTF_KEYUP + 4 + (isExtendedKey ? KEYEVENTF_EXTENDEDKEY : 0));
+	PostMessage(mainWindow, WM_USER, vKey, KEYEVENTF_KEYUP + HAVE_EXTENDED_KEY + (isExtendedKey ? KEYEVENTF_EXTENDEDKEY : 0));
 }
 
 void SetKeyDown(INPUT* input, DWORD VKEY, int flags);
@@ -285,8 +294,8 @@ UINT VKeyToScanCode(DWORD vkey, int flags = 0)
 {
 	UINT result = MapVirtualKeyExW(vkey, MAPVK_VK_TO_VSC_EX, NULL);
 
-	const int NotExtendedKey = 4;
-	const int IsExtendedKey = 4 | KEYEVENTF_EXTENDEDKEY;
+	const int NotExtendedKey = HAVE_EXTENDED_KEY | 0;
+	const int IsExtendedKey = HAVE_EXTENDED_KEY | KEYEVENTF_EXTENDEDKEY;
 	flags &= IsExtendedKey;
 
 	//These keys: Page Up, Page Down, End, Home, Left, Up, Right, Down, Insert, Delete
@@ -329,6 +338,35 @@ UINT VKeyToScanCode(DWORD vkey, int flags = 0)
 	return result;
 }
 
+const char numlockOnTable[] = {
+	VK_NUMPAD7,
+	VK_NUMPAD8,
+	VK_NUMPAD9,
+	VK_SUBTRACT,
+	VK_NUMPAD4,
+	VK_NUMPAD5,
+	VK_NUMPAD6,
+	VK_ADD,
+	VK_NUMPAD1,
+	VK_NUMPAD2,
+	VK_NUMPAD3,
+	VK_NUMPAD0
+};
+
+UINT ScancodeToVKey(DWORD scancode, bool numlockOn = false)
+{
+	UINT result = MapVirtualKeyExW(scancode, MAPVK_VSC_TO_VK_EX, NULL);
+	if (numlockOn && (scancode >= 0x47 && scancode <= 0x52)) //num 7 to num 0
+	{
+		return numlockOnTable[scancode - 0x47];
+	}
+	if (scancode == 0x45)
+	{
+		return VK_PAUSE;
+	}
+	return result;
+}
+
 LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	INPUT input;
@@ -338,7 +376,7 @@ LRESULT CALLBACK MyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		{
 			bool isExtendedKey = 0 != (lParam & KEYEVENTF_EXTENDEDKEY); //1
 			bool isRelease = 0 != (lParam & KEYEVENTF_KEYUP); //2
-			bool haveExtendedKey = 0 != (lParam & 4);
+			bool haveExtendedKey = 0 != (lParam & HAVE_EXTENDED_KEY);
 			bool isDebugKey = 0 != (lParam & 8);
 			SetKeyDown(&input, (DWORD)wParam, (int)lParam);
 			#if TEST
@@ -398,8 +436,32 @@ void CALLBACK MyWinEventHookProc(HWINEVENTHOOK hWinEventHook, DWORD event, HWND 
 bool IsWindowAdmin(HWND hwnd);
 #endif
 
+#if ENABLE_REGISTRY_REMAPPING
+DWORD FilterRemappedVKey(DWORD vkey)
+{
+	switch (vkey)
+	{
+	case 0:
+	case 0xFFFF:
+		return VK_F23;
+	case VK_LSHIFT:
+		return VK_RSHIFT;
+	case VK_LWIN:
+		return VK_RWIN;
+	}
+	return vkey;
+}
+#endif
+
 int APIENTRY Main()
 {
+	#if ENABLE_REGISTRY_REMAPPING
+	WORD scancodeAtBootTime = UpdateVolatile();
+	WORD scancodeInRegistryNow = GetRemappedKey(SCANCODE_F23);
+	f23VKey = FilterRemappedVKey(ScancodeToVKey(scancodeInRegistryNow));
+	f23VKey_alternate = FilterRemappedVKey(ScancodeToVKey(scancodeAtBootTime));
+	#endif
+
 	#if ENABLE_CUSTOM_KEY
 	targetVKey = VK_RCONTROL;
 	targetVKeyNoRepeat = true;
@@ -453,12 +515,11 @@ int APIENTRY Main()
 		#endif
 	}
 	#if ENABLE_REGISTRY_REMAPPING
+	int targetScanCode = VKeyToScanCode(targetVKey);
 	if (wantToRegistryRemap)
 	{
-		int targetScanCode = VKeyToScanCode(targetVKey);
-		//scancode 0x6E is the F23 key
-		RegisterRemappedKey(0x6E, targetScanCode);
-		allowTargetKeyToReplaceF23 = true;
+		RegisterRemappedKey(SCANCODE_F23, VKeyToScanCode(targetVKey));
+		f23VKey = targetVKey;
 	}
 	#endif
 	if (!DO_NOTHING)
@@ -524,6 +585,12 @@ int APIENTRY Main()
 	}
 	#endif //WATCH_ACTIVE_WINDOW
 
+	#if DEBUG
+	DebugPrintf("targetVKey: %s\n", GetVKeyName(targetVKey));
+	DebugPrintf("targetVKeyNoRepeat: %d\n", targetVKeyNoRepeat);
+	DebugPrintf("f23VKey: %s\n", GetVKeyName(f23VKey));
+	DebugPrintf("f23VKey_alternate: %s\n", GetVKeyName(f23VKey_alternate));
+	#endif
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0) > 0)
 	{
@@ -740,12 +807,6 @@ void ReplaySuppressedKeys()
 
 LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 {
-	//cooperate with other programs which use low level keyboard hooks
-	if (code < 0)
-	{
-		return CallNextHookEx(NULL, code, wParam, lParam);
-	}
-
 	int keyCode;
 	int flags;
 	KBDLLHOOKSTRUCT* hookStruct = (KBDLLHOOKSTRUCT*)lParam;
@@ -755,8 +816,14 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 	bool released = 0 != (flags & (1 << 7));
 	bool isExtendedKey = 0 != (flags & LLKHF_EXTENDED);
 	bool pressed = !released;
-	bool isF23 = keyCode == VK_F23 || (allowTargetKeyToReplaceF23 && keyCode == targetVKey);
-
+	bool isF23 = keyCode == f23VKey || keyCode == f23VKey_alternate || keyCode == VK_F23 ;
+	
+	//cooperate with other programs which use low level keyboard hooks
+	if (code < 0)
+	{
+		goto done;
+	}
+	
 	#if TEST
 	//Special Extra info indicates that we don't ignore a special injected keypress
 	if (hookStruct->dwExtraInfo == 0x12345678)
@@ -764,7 +831,12 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 		injected = false;
 	}
 	#endif //TEST
-
+	
+	if (DO_NOTHING)
+	{
+		goto done;
+	}
+	
 	if (injected)
 	{
 		#if HANDLE_INVALID
@@ -789,14 +861,9 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			}
 		}
 		#endif //HANDLE_INVALID
-		return CallNextHookEx(NULL, code, wParam, lParam);
+		goto done;
 	}
 	
-	if (DO_NOTHING)
-	{
-		return CallNextHookEx(NULL, code, wParam, lParam);
-	}
-
 	#if HANDLE_INVALID
 	if (outOfPressSequence)
 	{
@@ -872,7 +939,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				return -1;  //block LSHIFT key
 			}
 			#if HANDLE_INVALID
-			else if (keyCode == VK_F23)
+			else if (isF23)
 			{
 				//Left Windows -> F23 breaks the sequence
 				#if DEBUG
@@ -924,8 +991,12 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				SetReleaseState(STATE::F23);
 				CancelTimer();
 				leftWindowsSuppressed = false;
-				InjectKeyDownAsync(targetVKey);
-				return -1;  //block F23 key
+				if (keyCode != targetVKey)
+				{
+					InjectKeyDownAsync(targetVKey);
+					return -1;  //block F23 key
+				}
+				goto done;
 			}
 			#endif //HANDLE_INVALID
 			else
@@ -938,7 +1009,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 					//block key now then enqueue it for replay afterwards
 					//so that the key happens after the press to LWIN or LSHIFT
 					InjectKeyDownAsync2(keyCode, isExtendedKey);
-					return -1;  //block F23 key
+					return -1;
 				}
 			}
 		}
@@ -957,12 +1028,13 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 				{
 					return -1;
 				}
-				if (keyCode == VK_F23)
+				if (keyCode != targetVKey)
 				{
 					InjectKeyDownAsync(targetVKey);
 					return -1;  //block F23 key
 				}
 				//If we pressed remapped F23->Target Key, allow the Target keypress to proceed
+				goto done;
 			}
 			else
 			{
@@ -979,7 +1051,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			}
 		}
 		#if HANDLE_INVALID
-		if (keyCode == VK_F23)
+		if (isF23)
 		{
 			//Out of sequence keypress to F23
 			#if DEBUG
@@ -1073,7 +1145,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			}
 		}
 		//Allow other keys to force-break an invalid sequence
-		if (!(keyCode == VK_F23 || keyCode == VK_LSHIFT || keyCode == VK_LWIN))
+		if (!(isF23 || keyCode == VK_LSHIFT || keyCode == VK_LWIN))
 		{
 			outOfPressSequence = false;
 		}
@@ -1094,30 +1166,54 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 		outOfPressSequence = false;
 		#endif
 
-		if (isF23 && releaseState == STATE::F23)
+		if (releaseState == STATE::F23)
 		{
-			#if HANDLE_INVALID
-			SetPressState(STATE::Idle);
-			CancelTimer();
-			#endif //HANDLE_INVALID
-			SetReleaseState(STATE::LeftShift);
-
-			if (keyCode == VK_F23)
+			if (isF23)
 			{
-				InjectKeyUpAsync(targetVKey);
-				return -1;  //block F23 key release
+				#if HANDLE_INVALID
+				SetPressState(STATE::Idle);
+				CancelTimer();
+				#endif //HANDLE_INVALID
+				SetReleaseState(STATE::LeftShift);
+
+				if (keyCode != targetVKey)
+				{
+					InjectKeyUpAsync(targetVKey);
+					return -1;  //block F23 key release
+				}
+				//allow remapped F23->Target keypress to proceed
+				goto done;
 			}
-			//allow remapped F23->Target keypress to proceed
 		}
-		if (keyCode == VK_LSHIFT && releaseState == STATE::LeftShift)
+		else if (releaseState == STATE::LeftShift)
 		{
-			SetReleaseState(STATE::LeftWindows);
-			return -1;  //block LSHIFT key release
+			if (keyCode == VK_LSHIFT)
+			{
+				SetReleaseState(STATE::LeftWindows);
+				return -1;  //block LSHIFT key release
+			}
+			else
+			{
+				//Now that "F23" can actually be a different key, this case is possible.
+				//You reach here by releasing the target key, then releasing a different key.
+				//If we reach this code, do not block the key releases for Left Windows or Left Shift.
+				SetReleaseState(STATE::Idle);
+			}
 		}
-		if (keyCode == VK_LWIN && releaseState == STATE::LeftWindows)
+		else if (releaseState == STATE::LeftWindows)
 		{
-			SetReleaseState(STATE::Idle);
-			return -1;  //block LWIN key release
+			if (keyCode == VK_LWIN)
+			{
+				SetReleaseState(STATE::Idle);
+				return -1;  //block LWIN key release
+			}
+			else
+			{
+				//Now that "F23" can actually be a different key, this case is possible.
+				//You reach here by releasing the target key, then releasing a different key.
+				//If we reach this code, do not block the key releases for Left Windows or Left Shift.
+				SetReleaseState(STATE::Idle);
+			}
 		}
 
 		#if HANDLE_INVALID
@@ -1126,7 +1222,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			SetLeftShiftDown(false);
 		}
 
-		if (keyCode == VK_F23)
+		if (isF23)
 		{
 			//Out-of-sequence F23 key release
 			#if DEBUG
@@ -1138,18 +1234,21 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			InjectKeyUpAsync(VK_LSHIFT);
 			InjectKeyUpAsync(VK_LWIN);
 			InjectKeyUpAsync(VK_F23);
+			SetReleaseState(STATE::Idle);
 			return -1;
 		}
 		#endif //HANDLE_INVALID
 
 		if (pressState != STATE::Idle)
 		{
+			//Case where any key release interrupted the LWin LShift F23 press sequence
 			bool leftWindowsWasSuppressed = leftWindowsSuppressed;
 			bool leftShiftWasSuppressed = leftShiftSuppressed;
 			ReplaySuppressedKeys();
 			SetPressState(STATE::Idle);
-			//Game Bar is weird, you need to inject a key up event and suppress the real key up
-			//otherwise Game Bar sees the injected Key Down after the real Key Up.
+			//If the key we just released was one of the suppressed keys,
+			//enqueue the key up to come after the injected key down, and suppress the real key up.
+			//This keeps the key events in the correct order.
 			if (leftWindowsWasSuppressed && keyCode == VK_LWIN)
 			{
 				InjectKeyUpAsync(VK_LWIN);
@@ -1162,7 +1261,7 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 			}
 		}
 	}
-
+done:
 	return CallNextHookEx(NULL, code, wParam, lParam);
 }
 
@@ -1195,7 +1294,7 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 		DebugPrintf("%d %s%s0x%02X %s\n", arrivalTime, injectedMessage, pressedMessage, keyCode, GetVKeyName(keyCode));
 		//DWORD extendedKey = ((hookStruct->flags & LLKHF_EXTENDED) ? 0xE000 : 0);
 		//DWORD scanCode = hookStruct->scanCode + extendedKey;
-		//DebugPrintf("debug: scancode %02X -> %02X\n", scanCode, VKeyToScanCode(keyCode, 4 + (hookStruct->flags & LLKHF_EXTENDED)));
+		//DebugPrintf("debug: scancode %02X -> %02X %s\n", scanCode, VKeyToScanCode(keyCode, 4 + (hookStruct->flags & LLKHF_EXTENDED)), GetVKeyName(ScancodeToVKey(scanCode)));
 	}
 	#endif //DEBUG
 	LRESULT result = MyKeyboardProc2(code, wParam, lParam);

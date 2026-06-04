@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Data;
 using System.Drawing;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -24,6 +25,15 @@ namespace NoCopilotKey_Installer
                 }
             }
             return vkey;
+        }
+
+        public static string GetVKeyName(uint vkey)
+        {
+            if (vkey >= 0 && vkey < vkeyTable.Length)
+            {
+                return vkeyTable[vkey];
+            }
+            return "";
         }
 
         public string SelectedVKey
@@ -69,6 +79,18 @@ namespace NoCopilotKey_Installer
         private void KeySelectionForm_Load(object sender, EventArgs e)
         {
 
+        }
+
+        public static uint VKeyNameToVKey(string customVKey)
+        {
+            for (int i = 0; i < vkeyTable.Length; i++)
+            {
+                if (String.Equals(vkeyTable[i], customVKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    return (uint)i;
+                }
+            }
+            return 0;
         }
 
         class MyListItem
@@ -604,7 +626,7 @@ namespace NoCopilotKey_Installer
             "",
             "",
             "",
-            "",
+            "\\ (left backslash)",
             "",
             "",
             "",
@@ -635,5 +657,73 @@ namespace NoCopilotKey_Installer
             "",
             "",
         };
+
+        public static uint ScancodeToVKey(ushort scancode)
+        {
+            const uint VK_PAUSE = 0x13;
+            const uint MAPVK_VSC_TO_VK_EX = 3;
+            uint result = MapVirtualKeyExW(scancode, MAPVK_VSC_TO_VK_EX);
+            if (scancode == 0x45)
+            {
+                return VK_PAUSE;
+            }
+            return result;
+        }
+
+        public static ushort VKeyToScancode(uint vkey, uint flags = 0)
+        {
+            const uint MAPVK_VK_TO_VSC_EX = 4;
+            const uint VK_PRIOR = 0x33;
+            const uint VK_DOWN = 0x28;
+            const uint VK_INSERT = 0x2D;
+            const uint VK_DELETE = 0x2E;
+            const uint VK_NUMLOCK = 0x90;
+            const uint VK_RSHIFT = 0xA1;
+            const uint VK_RETURN = 0x0D;
+            const uint VK_SNAPSHOT = 0x2C;
+            const uint VK_PAUSE = 0x13;
+
+            const uint NotExtendedKey = 4;
+            const uint IsExtendedKey = 5;
+
+            uint result = MapVirtualKeyExW(vkey, MAPVK_VK_TO_VSC_EX);
+            if ((vkey >= VK_PRIOR && vkey <= VK_DOWN) ||
+                vkey == VK_INSERT || vkey == VK_DELETE ||
+                vkey == VK_NUMLOCK || vkey == VK_RSHIFT)
+            {
+                if (flags != NotExtendedKey)
+                {
+                    //Normal arrow keys, Page Up keys, etc (not numpad keys)
+                    return (ushort)(result | 0xE000);
+                }
+                else
+                {
+                    //Numpad keys with num lock off
+                    return (ushort)result;
+                }
+            }
+            if (flags == IsExtendedKey)
+            {
+                //When extended key flag is set, it's Numpad Enter instead of regular enter.
+                if (vkey == VK_RETURN)
+                {
+                    return (ushort)(result | 0xE000);
+                }
+                //When extended key flag is set, it's the sysreq key instead of the printscreen key
+                if (vkey == VK_SNAPSHOT)
+                {
+                    return 0xE037;
+                }
+            }
+            //VK_PAUSE has the wrong scancode for some reason?
+            if (vkey == VK_PAUSE && (flags == NotExtendedKey))
+            {
+                return 0x45;
+            }
+            return (ushort)result;
+        }
+
+        [DllImport("user32.dll", CallingConvention = CallingConvention.Winapi, ExactSpelling = true)]
+        static extern uint MapVirtualKeyExW(uint code, uint mapType, IntPtr localeHandle = default);
     }
 }

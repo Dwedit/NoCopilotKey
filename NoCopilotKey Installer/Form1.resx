@@ -121,17 +121,19 @@
     <value>17, 17</value>
   </metadata>
   <data name="chkRemapViaRegistry.ToolTip" xml:space="preserve">
-    <value>Remapping F23 to Right Ctrl (or selected key) using the registry:
+    <value>Normally, when you press the Copilot Key, it sends these three keys: Left Windows, Left Shift, F23.
+This option will remap the third part of the sequence (F23) to Right Ctrl (or selected key) instead.
+
+When remapping F23 to Right Ctrl (or selected key) using the registry:
 • While NoCopilotKey is running, the program will work as normal.  The CopilotKey key will
    act as Right Ctrl (or selected key) and the Left Windows and Left Shift keys will work independently.
-• When NoCopilotKey is no longer running, the Copilot Key will act as if you are
-   holding down Left Windows, Left Shift, and Right Ctrl (or selected key) at the same time.
-• Do not use this If your system produces a non-standard key sequence when you press the copilot key.
+• If NoCopilotKey is no longer running, the Copilot Key will act as if you are holding down
+   Left Windows, Left Shift, and Right Ctrl (or selected key) at the same time.
 • May improve compatibility with certain programs which are unaffected by global keyboard hooks.
 • May reduce the chance of Right Ctrl (or selected key) possibly getting stuck.
-• Does not cause Alt+Ctrl+Del to work when remapping to Right Ctrl.
-• After installing, remapping F23 will not take effect untl the computer has been restarted.
+• Does not make Alt+Ctrl+Del work when remapping to Right Ctrl.
+• After installing, remapping F23 will not take effect until you restart or log off.
    Until then, NoCopilotKey will run in its usual way using global keyboard hooks.
-• After uninstalling, a restart will be required to remap the F23 key back again.</value>
+• After uninstalling, a restart or logoff will be required to remap the F23 key back again.</value>
   </data>
 </root>

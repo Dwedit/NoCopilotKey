@@ -25,6 +25,7 @@ namespace NoCopilotKey_Installer
         }
         public static int Main2(string[] args)
         {
+            KeyBindings.UpdateVolatile();
             InstallationMode installationMode = InstallationMode.Undefined;
             AutoRunMode autoRunMode = AutoRunMode.Undefined;
 

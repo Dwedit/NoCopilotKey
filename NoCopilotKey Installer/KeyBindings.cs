@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Globalization;
 using System.Threading.Tasks;
 
 namespace NoCopilotKey_Installer
@@ -69,6 +70,35 @@ namespace NoCopilotKey_Installer
 
     class KeyBindings
     {
+        public const int SCANCODE_F23 = 0x6E;
+
+        private static KeyBindingsEntry[] ReadFromRegistry(RegistryKey regKey, string valueName)
+        {
+            var bytes = regKey.GetValue(valueName) as byte[];
+            if (bytes == null) return null;
+            var ms = new MemoryStream(bytes);
+            var br = new BinaryReader(ms);
+            int headerVersion = br.ReadInt32();
+            int headerFlags = br.ReadInt32();
+            int numberOfEntries = br.ReadInt32() - 1;
+            if (headerVersion != 0 || headerFlags != 0)
+            {
+                return null;
+            }
+            if ((long)numberOfEntries * 4 + 16 > (long)bytes.Length || numberOfEntries < 0)
+            {
+                return null;
+            }
+            int entriesPosition = (int)br.BaseStream.Position;
+            br.BaseStream.Position += numberOfEntries * 4;
+            int terminator = br.ReadInt32();
+            if (terminator != 0)
+            {
+                return null;
+            }
+            return KeyBindingsEntry.FromByteArray(bytes, entriesPosition, numberOfEntries * 4);
+        }
+
         public static KeyBindingsEntry[] ReadFromRegistry()
         {
             try
@@ -76,35 +106,30 @@ namespace NoCopilotKey_Installer
                 using (var regKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Keyboard Layout"))
                 {
                     if (regKey == null) return null;
-                    var bytes = regKey.GetValue("Scancode Map") as byte[];
-                    if (bytes == null) return null;
-                    var ms = new MemoryStream(bytes);
-                    var br = new BinaryReader(ms);
-                    int headerVersion = br.ReadInt32();
-                    int headerFlags = br.ReadInt32();
-                    int numberOfEntries = br.ReadInt32() - 1;
-                    if (headerVersion != 0 || headerFlags != 0)
-                    {
-                        return null;
-                    }
-                    if ((long)numberOfEntries * 4 + 16 > (long)bytes.Length || numberOfEntries < 0)
-                    {
-                        return null;
-                    }
-                    int entriesPosition = (int)br.BaseStream.Position;
-                    br.BaseStream.Position += numberOfEntries * 4;
-                    int terminator = br.ReadInt32();
-                    if (terminator != 0)
-                    {
-                        return null;
-                    }
-                    return KeyBindingsEntry.FromByteArray(bytes, entriesPosition, numberOfEntries * 4);
+                    return ReadFromRegistry(regKey, "Scancode Map");
                 }
             }
             catch
             {
                 return null;
             }
+        }
+
+        private static bool WriteToRegistry(KeyBindingsEntry[] entries, RegistryKey regKey, string valueName)
+        {
+            byte[] bytes = new byte[entries.Length * 4 + 16];
+            var ms = new MemoryStream(bytes);
+            var bw = new BinaryWriter(ms);
+            bw.Write((int)0); //headerVersion
+            bw.Write((int)0); //headerFlags
+            bw.Write((int)entries.Length + 1); //numberOfEntries
+            for (int i = 0; i < entries.Length; i++)
+            {
+                bw.Write((int)entries[i].ToInt32());
+            }
+            bw.Write((int)0); //terminator
+            regKey.SetValue(valueName, bytes, RegistryValueKind.Binary);
+            return true;
         }
 
         public static bool WriteToRegistry(KeyBindingsEntry[] entries)
@@ -118,25 +143,23 @@ namespace NoCopilotKey_Installer
                         regKey.DeleteValue("Scancode Map");
                         return true;
                     }
-                    byte[] bytes = new byte[entries.Length * 4 + 16];
-                    var ms = new MemoryStream(bytes);
-                    var bw = new BinaryWriter(ms);
-                    bw.Write((int)0); //headerVersion
-                    bw.Write((int)0); //headerFlags
-                    bw.Write((int)entries.Length + 1); //numberOfEntries
-                    for (int i = 0; i < entries.Length; i++)
-                    {
-                        bw.Write((int)entries[i].ToInt32());
-                    }
-                    bw.Write((int)0); //terminator
-                    regKey.SetValue("Scancode Map", bytes, RegistryValueKind.Binary);
-                    return true;
+                    return WriteToRegistry(entries, regKey, "Scancode Map");
                 }
             }
             catch
             {
                 return false;
             }
+        }
+
+        public static bool RemoveRemappedKey(ushort scancodeToRemap)
+        {
+            return RegisterRemappedKey(scancodeToRemap, scancodeToRemap);
+        }
+
+        public static bool RegisterRemappedKey(ushort scancodeToRemap, ushort scancodeToChangeTo)
+        {
+            return RegisterRemappedKey(scancodeToRemap, scancodeToChangeTo, out _);
         }
 
         public static bool RegisterRemappedKey(ushort scancodeToRemap, ushort scancodeToChangeTo, out bool changed)
@@ -188,6 +211,87 @@ namespace NoCopilotKey_Installer
             var entries = ReadFromRegistry();
             if (entries == null) return false;
             return entries.Any(e => e.SourceKey == scancode);
+        }
+
+        public static ushort GetKeyMapping(ushort scancode)
+        {
+            var entries = ReadFromRegistry();
+            if (entries == null) return 0;
+            for (int i = 0; i < entries.Length; i++)
+            {
+                if (entries[i].SourceKey == scancode)
+                {
+                    return entries[i].DestinationKey;
+                }
+            }
+            return 0xFFFF;
+        }
+        static int _alreadyCalledUpdateVolatile = 0;
+        static ushort initialF23Mapping = 0xFFFF;
+        public static void UpdateVolatile()
+        {
+            if (_alreadyCalledUpdateVolatile != 0) return;
+            _alreadyCalledUpdateVolatile = 1;
+
+            try
+            {
+                //var softwareKey = Registry.CurrentUser.OpenSubKey("SOFTWARE", true);
+                //var volatileKey1 = softwareKey.CreateSubKey("NoCopilotKey-temp", true, RegistryOptions.Volatile);
+                var volatileKey1 = Registry.CurrentUser.CreateSubKey("Volatile Environment", true, RegistryOptions.Volatile);
+                var volatileKey = volatileKey1.CreateSubKey(GetSessionId().ToString(CultureInfo.InvariantCulture), true, RegistryOptions.Volatile);
+                byte[] existingValue = volatileKey.GetValue("NoCopilotKey-Scancode Map") as byte[];
+                KeyBindingsEntry[] entries;
+                if (existingValue == null)
+                {
+                    entries = ReadFromRegistry();
+                    if (entries == null)
+                    {
+                        entries = new KeyBindingsEntry[0];
+                    }
+                    WriteToRegistry(entries, volatileKey, "NoCopilotKey-Scancode Map");
+                }
+                else
+                {
+                    entries = ReadFromRegistry(volatileKey, "NoCopilotKey-Scancode Map");
+                    if (entries == null)
+                    {
+                        entries = new KeyBindingsEntry[0];
+                    }
+                }
+                for (int i = 0; i < entries.Length; i++)
+                {
+                    if (entries[i].SourceKey == SCANCODE_F23)
+                    {
+                        initialF23Mapping = entries[i].DestinationKey;
+                    }
+                }
+            }
+            catch
+            {
+
+            }
+        }
+
+        public static ushort GetCurrentF23Mapping()
+        {
+            return GetKeyMapping(SCANCODE_F23);
+        }
+        public static ushort GetInitialF23Mapping()
+        {
+            return initialF23Mapping;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool ProcessIdToSessionId(int processId, out uint sessionId);
+
+        public static uint GetSessionId()
+        {
+            uint sessionId;
+            if (ProcessIdToSessionId(System.Diagnostics.Process.GetCurrentProcess().Id, out sessionId))
+            {
+                return sessionId;
+            }
+            return 0;
         }
     }
 }

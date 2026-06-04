@@ -47,11 +47,94 @@ namespace NoCopilotKey_Installer
         public static bool Install(InstallationMode installationMode, AutoRunMode autoRunMode, bool doRegistryRemap, string customVKey)
         {
             bool needAdmin = installationMode == InstallationMode.InstallToProgramFiles || autoRunMode == AutoRunMode.ScheduledTask;
-            bool haveRegistryRemap = needAdmin && KeyBindings.HaveKeyMapping(0x6E);
-
-            if (!IsAdmin() && needAdmin)
+            bool isAdmin = IsAdmin();
+            if (!isAdmin && needAdmin)
             {
                 RestartAsAdmin();
+            }
+            ushort currentF23Mapping = KeyBindings.GetCurrentF23Mapping();
+            ushort initialF23Mapping = KeyBindings.GetInitialF23Mapping();
+            bool haveF23Mapping = currentF23Mapping != 0xFFFF;
+            bool haveInitialF23Mapping = initialF23Mapping != 0xFFFF;
+            bool initialF23IsDisabled = initialF23Mapping == 0;
+            bool currentF23IsDisabled = currentF23Mapping == 0;
+            doRegistryRemap = needAdmin && doRegistryRemap;
+
+            if (initialF23IsDisabled && currentF23IsDisabled && !isAdmin)
+            {
+                var dialogResult = MessageBox.Show("The F23 key is currently disabled by registry.  NoCopilotKey will not work unless the F23 key is enabled.  Enable the F23 Key? (Requires Admin)", Application.ProductName, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (dialogResult == DialogResult.Yes)
+                {
+                    RestartAsAdmin();
+                }
+                else if (dialogResult == DialogResult.Cancel)
+                {
+                    return false;
+                }
+            }
+
+            //validate that customVKey is a recognized key - blank it out if it's not
+            if (!String.IsNullOrEmpty(customVKey))
+            {
+                string friendlyName = KeySelectionForm.GetFriendlyNameForVKey(customVKey);
+                if (String.IsNullOrEmpty(friendlyName))
+                {
+                    customVKey = "";
+                }
+            }
+            string customVKey2 = customVKey;
+            if (String.IsNullOrEmpty(customVKey2))
+            {
+                customVKey2 = "VK_RCONTROL";
+            }
+
+            //bool keyMappingChanged = false;
+            //if (haveF23Mapping)
+            //{
+            //    ushort currentF23Mapping = KeyBindings.GetCurrentF23Mapping();
+            //    ushort selectedScancode = KeySelectionForm.VKeyToScancode(KeySelectionForm.VKeyNameToVKey(customVKey2));
+            //    if (currentF23Mapping != selectedScancode)
+            //    {
+            //        keyMappingChanged = true;
+            //    }
+            //}
+
+            bool wantToRemoveF23Mapping = false;
+
+            if (!doRegistryRemap && (initialF23IsDisabled || currentF23IsDisabled) && isAdmin)
+            {
+                wantToRemoveF23Mapping = true;
+            }
+
+            if (!doRegistryRemap && haveF23Mapping && isAdmin)
+            {
+                DialogResult dialogResult;
+                if (initialF23IsDisabled || currentF23IsDisabled)
+                {
+                    dialogResult = DialogResult.Yes;
+                }
+                else
+                {
+                    dialogResult = MessageBox.Show(
+                        "The F23 key is currently remapped, but the setting to remap F23 is turned off." + Environment.NewLine +
+                        "Remove the key mapping from the registry?", Application.ProductName, MessageBoxButtons.YesNoCancel);
+                }
+                if (dialogResult == DialogResult.Yes)
+                {
+                    wantToRemoveF23Mapping = true;
+                }
+                if (dialogResult == DialogResult.Cancel)
+                {
+                    return false;
+                }
+            }
+            if (wantToRemoveF23Mapping)
+            {
+                bool removed = KeyBindings.RemoveRemappedKey(KeyBindings.SCANCODE_F23);
+                if (!removed)
+                {
+                    MessageBox.Show("Failed to unmap F23 key", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
 
             string targetDirectory = "";
@@ -82,13 +165,8 @@ namespace NoCopilotKey_Installer
                 }
                 if (!String.IsNullOrEmpty(customVKey))
                 {
-                    //validate custom vkey
-                    string friendlyName = KeySelectionForm.GetFriendlyNameForVKey(customVKey);
-                    if (!String.IsNullOrEmpty(friendlyName))
-                    {
-                        if (arguments.Length > 0) arguments += " ";
-                        arguments += "--key " + customVKey;
-                    }
+                    if (arguments.Length > 0) arguments += " ";
+                    arguments += "--key " + customVKey;
                 }
             }
             string installerExePath = Path.Combine(targetDirectory, "NoCopilotKey Installer.exe");
@@ -182,7 +260,11 @@ namespace NoCopilotKey_Installer
             }
             Process.Start(exePath, arguments);
 
-            if (!haveRegistryRemap && doRegistryRemap)
+            if (initialF23IsDisabled)
+            {
+                MessageBox.Show("Since the F23 key was disabled, you must restart or log off before NoCopilotKey will work.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else if (!haveF23Mapping && doRegistryRemap)
             {
                 MessageBox.Show("Using the registry to remap the F23 Key will take effect once the computer is restarted.\r\nUntil then, the program will remap the Copilot key by using only global keyboard hooks.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
@@ -264,6 +346,11 @@ namespace NoCopilotKey_Installer
             {
                 RestartAsAdmin();
             }
+
+            bool haveF23Mapping = needAdmin && KeyBindings.GetCurrentF23Mapping() != 0xFFFF;
+            bool haveInitialF23Mapping = needAdmin && KeyBindings.GetInitialF23Mapping() != 0xFFFF;
+            bool useRegistryRemap = needAdmin && UseRegistryRemap(GetArgs());
+
             List<string> filesToDelete = new List<string>();
             List<string> directoriesToDelete = new List<string>();
             bool TryDeleteFile2(string fileNameToDelete)
@@ -380,17 +467,36 @@ namespace NoCopilotKey_Installer
             }
             if (needAdmin)
             {
-                //remove F23 registry remap
-                bool okay = KeyBindings.RegisterRemappedKey(0x6E, 0x6E, out bool changed);
-                if (changed)
+                bool wantToRemoveRegistryRemap = false;
+                if (haveF23Mapping && useRegistryRemap)
                 {
-                    if (!okay)
+                    wantToRemoveRegistryRemap = true;
+                }
+                else if (haveF23Mapping)
+                {
+                    var dialogResult = MessageBox.Show("There is a key remapping for F23 in the registry, but it could have been created by another program.  Do you want to remove it?", Application.ProductName, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button1);
+                    if (dialogResult == DialogResult.Yes)
                     {
-                        MessageBox.Show("Failed to remove F23 key remapping from registry", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Stop);
+                        wantToRemoveRegistryRemap = true;
                     }
-                    else
+                }
+                if (wantToRemoveRegistryRemap)
+                {
+                    //remove F23 registry remap
+                    bool okay = KeyBindings.RegisterRemappedKey(KeyBindings.SCANCODE_F23, KeyBindings.SCANCODE_F23, out bool changed);
+                    if (changed)
                     {
-                        MessageBox.Show("F23 Key (Copilot Key) will remain remapped until the computer is restarted.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        if (!okay)
+                        {
+                            MessageBox.Show("Failed to remove F23 key remapping from registry", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Stop);
+                        }
+                        else
+                        {
+                            if (haveInitialF23Mapping)
+                            {
+                                MessageBox.Show("The F23 Key (part of the Copilot Key) will remain remapped until you restart or log off.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            }
+                        }
                     }
                 }
             }
@@ -698,5 +804,33 @@ namespace NoCopilotKey_Installer
 
         [DllImport("user32.dll", CallingConvention = CallingConvention.Winapi, ExactSpelling = true)]
         static extern int SetForegroundWindow(IntPtr hwnd);
+
+        public static Version GetInstalledVersion()
+        {
+            string appDir;
+
+            if (IsInstalledToProgramFiles())
+            {
+                appDir = GetProgramFilesAppDirectory();
+            }
+            else if (IsInstalledToUserProgramFiles())
+            {
+                appDir = GetUserProgramFilesAppDirectory();
+            }
+            else
+            {
+                return null;
+            }
+            try
+            {
+                string exePath = Path.Combine(appDir, "NoCopilotKey.exe");
+                FileVersionInfo fileVersion = FileVersionInfo.GetVersionInfo(exePath);
+                return new Version(fileVersion.FileVersion);
+            }
+            catch (Exception ex)
+            {
+                return null;
+            }
+        }
     }
 }
