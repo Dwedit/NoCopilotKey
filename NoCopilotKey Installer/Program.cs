@@ -19,6 +19,9 @@ namespace NoCopilotKey_Installer
         [STAThread]
         public static void Main()
         {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+
             var args = Environment.GetCommandLineArgs();
             int exitCode = Main2(args);
             Environment.ExitCode = exitCode;
@@ -117,8 +120,6 @@ namespace NoCopilotKey_Installer
                     instance.Dispose();
                 }
             }
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new Form1());
             return Environment.ExitCode;
         }

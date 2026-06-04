@@ -98,7 +98,7 @@ namespace NoCopilotKey_Installer
                 if (installedVersion != null)
                 {
                     string versionString = installedVersion.ToString();
-                    label1.Text = "Version " + versionString + "is currently installed." + Environment.NewLine + "To change whether the program is installed as Administrator or Normal User, uninstall the program first.";
+                    label1.Text = "Version " + versionString + " is currently installed." + Environment.NewLine + "To change whether the program is installed as Administrator or Normal User, uninstall the program first.";
                     if (myVersion > installedVersion)
                     {
                         installButton.Text = "Upgrade";

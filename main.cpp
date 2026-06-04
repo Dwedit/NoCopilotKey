@@ -159,9 +159,13 @@ bool leftShiftSuppressed;
 #if ENABLE_REGISTRY_REMAPPING
 DWORD f23VKey;
 DWORD f23VKey_alternate;
+USHORT f23ScanCode;
+USHORT f23ScanCode_alternate;
 #else
 const DWORD f23VKey = VK_F23;
 const DWORD f23VKey_alternate = VK_F23;
+const USHORT f23ScanCode = SCANCODE_F23;
+const USHORT f23ScanCode_alternate = SCANCODE_F23;
 #endif
 
 #if ENABLE_CUSTOM_KEY
@@ -456,10 +460,10 @@ DWORD FilterRemappedVKey(DWORD vkey)
 int APIENTRY Main()
 {
 	#if ENABLE_REGISTRY_REMAPPING
-	WORD scancodeAtBootTime = UpdateVolatile();
-	WORD scancodeInRegistryNow = GetRemappedKey(SCANCODE_F23);
-	f23VKey = FilterRemappedVKey(ScancodeToVKey(scancodeInRegistryNow));
-	f23VKey_alternate = FilterRemappedVKey(ScancodeToVKey(scancodeAtBootTime));
+	f23ScanCode_alternate = UpdateVolatile();
+	f23VKey_alternate = FilterRemappedVKey(ScancodeToVKey(f23ScanCode_alternate));
+	f23ScanCode = GetRemappedKey(SCANCODE_F23);
+	f23VKey = FilterRemappedVKey(ScancodeToVKey(f23ScanCode));
 	#endif
 
 	#if ENABLE_CUSTOM_KEY
@@ -515,11 +519,12 @@ int APIENTRY Main()
 		#endif
 	}
 	#if ENABLE_REGISTRY_REMAPPING
-	int targetScanCode = VKeyToScanCode(targetVKey);
+	USHORT targetScanCode = VKeyToScanCode(targetVKey);
 	if (wantToRegistryRemap)
 	{
 		RegisterRemappedKey(SCANCODE_F23, VKeyToScanCode(targetVKey));
 		f23VKey = targetVKey;
+		f23ScanCode = targetScanCode;
 	}
 	#endif
 	if (!DO_NOTHING)
@@ -590,6 +595,8 @@ int APIENTRY Main()
 	DebugPrintf("targetVKeyNoRepeat: %d\n", targetVKeyNoRepeat);
 	DebugPrintf("f23VKey: %s\n", GetVKeyName(f23VKey));
 	DebugPrintf("f23VKey_alternate: %s\n", GetVKeyName(f23VKey_alternate));
+	DebugPrintf("f23ScanCode: %02X\n", f23ScanCode);
+	DebugPrintf("f23ScanCode_alternate: %02X\n", f23ScanCode_alternate);
 	#endif
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0) > 0)
@@ -816,7 +823,16 @@ LRESULT CALLBACK MyKeyboardProc2(int code, WPARAM wParam, LPARAM lParam)
 	bool released = 0 != (flags & (1 << 7));
 	bool isExtendedKey = 0 != (flags & LLKHF_EXTENDED);
 	bool pressed = !released;
-	bool isF23 = keyCode == f23VKey || keyCode == f23VKey_alternate || keyCode == VK_F23 ;
+	bool isF23 = keyCode == VK_F23;
+	if (keyCode == 0xFF)
+	{
+		USHORT scanCode = hookStruct->scanCode | (hookStruct->flags & LLKHF_EXTENDED ? 0xE000 : 0);
+		isF23 |= (scanCode == f23ScanCode) || (scanCode == f23ScanCode_alternate);
+	}
+	else
+	{
+		isF23 |= (keyCode == f23VKey) || (keyCode == f23VKey_alternate);
+	}
 	
 	//cooperate with other programs which use low level keyboard hooks
 	if (code < 0)
@@ -1292,9 +1308,9 @@ LRESULT CALLBACK MyKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 	if (keyCode > 0)
 	{
 		DebugPrintf("%d %s%s0x%02X %s\n", arrivalTime, injectedMessage, pressedMessage, keyCode, GetVKeyName(keyCode));
-		//DWORD extendedKey = ((hookStruct->flags & LLKHF_EXTENDED) ? 0xE000 : 0);
-		//DWORD scanCode = hookStruct->scanCode + extendedKey;
-		//DebugPrintf("debug: scancode %02X -> %02X %s\n", scanCode, VKeyToScanCode(keyCode, 4 + (hookStruct->flags & LLKHF_EXTENDED)), GetVKeyName(ScancodeToVKey(scanCode)));
+		DWORD extendedKey = ((hookStruct->flags & LLKHF_EXTENDED) ? 0xE000 : 0);
+		DWORD scanCode = hookStruct->scanCode + extendedKey;
+		DebugPrintf("debug: scancode %02X -> %02X %s\n", scanCode, VKeyToScanCode(keyCode, 4 + (hookStruct->flags & LLKHF_EXTENDED)), GetVKeyName(ScancodeToVKey(scanCode)));
 	}
 	#endif //DEBUG
 	LRESULT result = MyKeyboardProc2(code, wParam, lParam);
@@ -1425,6 +1441,7 @@ void RegisterVKeyCodes()
 	RegisterVKeyCode("8", '8');
 	RegisterVKeyCode("9", '9');
 
+	RegisterVKeyCode("_00", 0x00);
 	RegisterVKeyCode("VK_LBUTTON", 0x01);
 	RegisterVKeyCode("VK_RBUTTON", 0x02);
 	RegisterVKeyCode("VK_CANCEL", 0x03);
@@ -1615,7 +1632,7 @@ void RegisterVKeyCodes()
 	RegisterVKeyCode("VK_NONAME", 0xFC);
 	RegisterVKeyCode("VK_PA1", 0xFD);
 	RegisterVKeyCode("VK_OEM_CLEAR", 0xFE);
-	RegisterVKeyCode("0xFF", 0xFF);
+	RegisterVKeyCode("_FF", 0xFF);
 }
 
 const char* GetVKeyName(int key)
