@@ -547,7 +547,10 @@ namespace NoCopilotKey_Installer
             }
         }
 
-        [DllImport("kernel32.dll", SetLastError = true)]
+        [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true, CharSet = CharSet.Unicode)]
+        static extern IntPtr OpenMutex(uint dwDesiredAccess, bool bInheritHandle, string lpName);
+
+        [DllImport("kernel32.dll", SetLastError = true, CallingConvention = CallingConvention.Winapi)]
         static extern bool QueryFullProcessImageName([In] IntPtr hProcess, [In] int dwFlags, [Out] StringBuilder lpExeName, ref int lpdwSize);
 
         public static string GetProcessFullName(Process process)
@@ -604,6 +607,13 @@ namespace NoCopilotKey_Installer
                 }
             }
             catch
+            {
+                status |= StopProgramStatus.FailedToStop;
+            }
+            //check if the mutex is still present (from running a renamed EXE)
+            const uint SYNCHRONIZE = 0x00100000;
+            IntPtr hMutex = OpenMutex(SYNCHRONIZE, false, "Mutex for NoCopilotKey");
+            if (hMutex != IntPtr.Zero)
             {
                 status |= StopProgramStatus.FailedToStop;
             }
