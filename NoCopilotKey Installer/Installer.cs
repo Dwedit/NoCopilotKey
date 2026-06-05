@@ -322,8 +322,8 @@ namespace NoCopilotKey_Installer
             }
             else if (!needAdmin && isAdmin)
             {
-                string runasExe = Path.Combine(Environment.SystemDirectory, "runas.exe");
-                string arguments2 = "/trustlevel:0x20000 \"" + exePath + "\" " + arguments;
+                string runasExe = Path.Combine(Environment.SystemDirectory, "explorer.exe");
+                string arguments2 = "\"" + exePath + "\" " + arguments;
                 if (File.Exists(runasExe))
                 {
                     Process.Start(runasExe, arguments2);
@@ -523,11 +523,11 @@ namespace NoCopilotKey_Installer
                         {
                             registryKeyExists = true;
                             existingKey.Dispose();
+                            baseRegistryKey.DeleteSubKeyTree(registryPath, true);
+                            uninstallerRemovedFromRegistry = true;
                         }
-                        baseRegistryKey.DeleteSubKeyTree(registryPath, true);
-                        uninstallerRemovedFromRegistry = true;
                     }
-                    catch
+                    catch (Exception ex)
                     {
                         uninstallerRemovedFromRegistry = false;
                         if (registryKeyExists) anyFailures = true;
