@@ -322,7 +322,7 @@ namespace NoCopilotKey_Installer
             }
             else if (!needAdmin && isAdmin)
             {
-                string runasExe = Path.Combine(Environment.SystemDirectory, "explorer.exe");
+                string runasExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
                 string arguments2 = "\"" + exePath + "\" " + arguments;
                 if (File.Exists(runasExe))
                 {
