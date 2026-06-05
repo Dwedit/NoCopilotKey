@@ -160,7 +160,7 @@ namespace NoCopilotKey_Installer
             {
                 installerNeedsToDeleteItself = true;
             }
-            
+
             if (!(needAdmin && !Installer.IsAdmin()))
             {
                 exitCode = Program.Main2(new string[] { "--uninstall" });
@@ -227,6 +227,18 @@ namespace NoCopilotKey_Installer
                 args.Add("--key");
                 args.Add(this.selectedVKey);
             }
+            //if (Installer.CheckForBadKeyMapping(out string badKeyMappingMessage))
+            //{
+            //    var dialogResult = MessageBox.Show(badKeyMappingMessage + "NoCopilotKey will not work unless those key remappings are removed.  Remove the key remappings?  (Requires Admin)", Application.ProductName, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            //    if (dialogResult == DialogResult.Yes)
+            //    {
+            //        needAdmin = true;
+            //    }
+            //    else if (dialogResult == DialogResult.Cancel)
+            //    {
+            //        return;
+            //    }
+            //}
 
             int exitCode = 1;
             if (!(needAdmin && !Installer.IsAdmin()))
@@ -235,17 +247,7 @@ namespace NoCopilotKey_Installer
             }
             else
             {
-                var process = Installer.LaunchInstaller2(args.ToArray(), needAdmin);
-                if (process != null)
-                {
-                    this.Enabled = false;
-                    while (!process.WaitForExit(10))
-                    {
-                        Application.DoEvents();
-                    }
-                    exitCode = process.ExitCode;
-                    this.Enabled = true;
-                }
+                exitCode = Installer.LaunchInstallerAndWait(args.ToArray(), needAdmin, this);
             }
             if (exitCode == 0)
             {

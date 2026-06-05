@@ -35,6 +35,7 @@ namespace NoCopilotKey_Installer
             bool doUninstall = false;
             bool doStop = false;
             bool doRegistryRemap = false;
+            bool cleanupKeyMappings = false;
             string customVKey = "";
 
             if (args.Contains("--install-to-program-files"))
@@ -61,6 +62,20 @@ namespace NoCopilotKey_Installer
             else if (args.Contains("--no-auto-run"))
             {
                 autoRunMode = AutoRunMode.NoAutoRun;
+            }
+
+            if (args.Contains("--cleanup-key-remappings"))
+            {
+                if (Installer.IsAdmin())
+                {
+                    bool okay = Installer.CleanUpKeyRemappings();
+                    if (!okay) return -1;
+                    return 0;
+                }
+                else
+                {
+                    Installer.RestartAsAdmin();
+                }
             }
 
             if (args.Contains("--uninstall"))

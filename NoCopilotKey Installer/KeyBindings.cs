@@ -71,6 +71,8 @@ namespace NoCopilotKey_Installer
     class KeyBindings
     {
         public const int SCANCODE_F23 = 0x6E;
+        public const int SCANCODE_LWIN = 0xE05B;
+        public const int SCANCODE_LSHIFT = 0x2A;
 
         private static KeyBindingsEntry[] ReadFromRegistry(RegistryKey regKey, string valueName)
         {
@@ -167,7 +169,17 @@ namespace NoCopilotKey_Installer
             changed = false;
             if (scancodeToRemap == 0) return false;
             var _entries = ReadFromRegistry();
-            if (_entries == null) return false;
+            if (_entries == null)
+            {
+                if (scancodeToRemap != scancodeToChangeTo)
+                {
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+            }
             var entries = new List<KeyBindingsEntry>(_entries);
             bool found = false;
             for (int i = 0; i < entries.Count; i++)
@@ -203,6 +215,14 @@ namespace NoCopilotKey_Installer
                 });
                 changed = true;
             }
+            if (!changed)
+            {
+                return true;
+            }
+            if (entries.Count == 0)
+            {
+                return WriteToRegistry(null);
+            }
             return WriteToRegistry(entries.ToArray());
         }
 
@@ -216,7 +236,7 @@ namespace NoCopilotKey_Installer
         public static ushort GetKeyMapping(ushort scancode)
         {
             var entries = ReadFromRegistry();
-            if (entries == null) return 0;
+            if (entries == null) return 0xFFFF;
             for (int i = 0; i < entries.Length; i++)
             {
                 if (entries[i].SourceKey == scancode)
@@ -228,6 +248,8 @@ namespace NoCopilotKey_Installer
         }
         static int _alreadyCalledUpdateVolatile = 0;
         static ushort initialF23Mapping = 0xFFFF;
+        static ushort initialLShiftMapping = 0xFFFF;
+        static ushort initialLWinMapping = 0xFFFF;
         public static void UpdateVolatile()
         {
             if (_alreadyCalledUpdateVolatile != 0) return;
@@ -264,6 +286,14 @@ namespace NoCopilotKey_Installer
                     {
                         initialF23Mapping = entries[i].DestinationKey;
                     }
+                    if (entries[i].SourceKey == SCANCODE_LWIN)
+                    {
+                        initialLWinMapping = entries[i].DestinationKey;
+                    }
+                    if (entries[i].SourceKey == SCANCODE_LSHIFT)
+                    {
+                        initialLShiftMapping = entries[i].DestinationKey;
+                    }
                 }
             }
             catch
@@ -276,9 +306,25 @@ namespace NoCopilotKey_Installer
         {
             return GetKeyMapping(SCANCODE_F23);
         }
+        public static ushort GetCurrentLShiftMapping()
+        {
+            return GetKeyMapping(SCANCODE_LSHIFT);
+        }
+        public static ushort GetCurrentLWinMapping()
+        {
+            return GetKeyMapping(SCANCODE_LWIN);
+        }
         public static ushort GetInitialF23Mapping()
         {
             return initialF23Mapping;
+        }
+        public static ushort GetInitialLShiftMapping()
+        {
+            return initialLShiftMapping;
+        }
+        public static ushort GetInitialLWinMapping()
+        {
+            return initialLWinMapping;
         }
 
         [DllImport("kernel32.dll", SetLastError = true)]

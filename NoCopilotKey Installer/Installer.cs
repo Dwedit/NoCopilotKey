@@ -44,6 +44,64 @@ namespace NoCopilotKey_Installer
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "NoCopilotKey.lnk");
         }
 
+        public static bool CheckForBadKeyMapping(out string badKeyMappingMessage)
+        {
+            badKeyMappingMessage = "";
+            ushort currentF23Mapping = KeyBindings.GetCurrentF23Mapping();
+            ushort initialF23Mapping = KeyBindings.GetInitialF23Mapping();
+            ushort currentLShiftMapping = KeyBindings.GetCurrentLShiftMapping();
+            ushort initialLShiftMapping = KeyBindings.GetInitialLShiftMapping();
+            ushort currentLWinMapping = KeyBindings.GetCurrentLWinMapping();
+            ushort initialLWinMapping = KeyBindings.GetInitialLWinMapping();
+
+            bool haveF23Mapping = currentF23Mapping != 0xFFFF;
+            bool haveInitialF23Mapping = initialF23Mapping != 0xFFFF;
+            if (!(currentLShiftMapping == KeyBindings.SCANCODE_LSHIFT || currentLShiftMapping == 0xFFFF) ||
+                !(initialLShiftMapping == KeyBindings.SCANCODE_LSHIFT || initialLShiftMapping == 0xFFFF))
+            {
+                badKeyMappingMessage += "Left Shift has been remapped.  ";
+            }
+            if (!(currentLWinMapping == KeyBindings.SCANCODE_LWIN || currentLWinMapping == 0xFFFF) ||
+                !(initialLWinMapping == KeyBindings.SCANCODE_LWIN || initialLWinMapping == 0xFFFF))
+            {
+                badKeyMappingMessage += "Left Windows has been remapped.  ";
+            }
+            if (currentF23Mapping == KeyBindings.SCANCODE_LWIN || initialF23Mapping == KeyBindings.SCANCODE_LWIN)
+            {
+                badKeyMappingMessage += "F23 has been remapped to Left Windows.  ";
+            }
+            if (currentF23Mapping == KeyBindings.SCANCODE_LSHIFT || initialF23Mapping == KeyBindings.SCANCODE_LSHIFT)
+            {
+                badKeyMappingMessage += "F23 has been remapped to Left Shift.  ";
+            }
+            return badKeyMappingMessage != "";
+        }
+
+        public static bool CleanUpKeyRemappings()
+        {
+            bool removed = true;
+            bool okay = true;
+            removed = KeyBindings.RemoveRemappedKey(KeyBindings.SCANCODE_F23);
+            okay &= removed;
+            if (!removed)
+            {
+                MessageBox.Show("Failed to remove remapping for F23 key.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            removed = KeyBindings.RemoveRemappedKey(KeyBindings.SCANCODE_LSHIFT);
+            okay &= removed;
+            if (!removed)
+            {
+                MessageBox.Show("Failed to remove remapping for Left Shift key.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            removed = KeyBindings.RemoveRemappedKey(KeyBindings.SCANCODE_LWIN);
+            okay &= removed;
+            if (!removed)
+            {
+                MessageBox.Show("Failed to remove remapping for Left Windows key.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            return okay;
+        }
+
         public static bool Install(InstallationMode installationMode, AutoRunMode autoRunMode, bool doRegistryRemap, string customVKey)
         {
             bool needAdmin = installationMode == InstallationMode.InstallToProgramFiles || autoRunMode == AutoRunMode.ScheduledTask;
@@ -52,15 +110,41 @@ namespace NoCopilotKey_Installer
             {
                 RestartAsAdmin();
             }
+            doRegistryRemap = needAdmin && doRegistryRemap;
+            
             ushort currentF23Mapping = KeyBindings.GetCurrentF23Mapping();
             ushort initialF23Mapping = KeyBindings.GetInitialF23Mapping();
+
             bool haveF23Mapping = currentF23Mapping != 0xFFFF;
-            bool haveInitialF23Mapping = initialF23Mapping != 0xFFFF;
-            doRegistryRemap = needAdmin && doRegistryRemap;
+            bool isBadKeyMapping = CheckForBadKeyMapping(out string badKeyMappingMessage);
+            
+            if (isBadKeyMapping && !isAdmin)
+            {
+                var dialogResult = MessageBox.Show(badKeyMappingMessage + "NoCopilotKey will not work unless those key remappings are removed.  Remove the key remappings?  (Requires Admin)", Application.ProductName, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (dialogResult == DialogResult.Yes)
+                {
+                    int exitCode = Installer.LaunchInstallerAndWait(new string[] { "--cleanup-key-remappings" }, true);
+                    if (exitCode != 0)
+                    {
+                        return false;
+                    }
+                }
+                else if (dialogResult == DialogResult.Cancel)
+                {
+                    return false;
+                }
+            }
 
             //validate that customVKey is a recognized key - blank it out if it's not
             if (!String.IsNullOrEmpty(customVKey))
             {
+                if (doRegistryRemap)
+                {
+                	//Block user from selecting Left Shift or Left Windows keys
+                    if (customVKey == "VK_LSHIFT") customVKey = "VK_RSHIFT";
+                    if (customVKey == "VK_LWIN") customVKey = "VK_RWIN";
+                }
+
                 string friendlyName = KeySelectionForm.GetFriendlyNameForVKey(customVKey);
                 if (String.IsNullOrEmpty(friendlyName))
                 {
@@ -86,7 +170,11 @@ namespace NoCopilotKey_Installer
 
             bool wantToRemoveF23Mapping = false;
 
-            if (!doRegistryRemap && haveF23Mapping && isAdmin)
+            if (!doRegistryRemap && isBadKeyMapping && isAdmin)
+            {
+                wantToRemoveF23Mapping = true;
+            }
+            else if (!doRegistryRemap && haveF23Mapping && isAdmin)
             {
                 DialogResult dialogResult;
                 dialogResult = MessageBox.Show(
@@ -101,13 +189,9 @@ namespace NoCopilotKey_Installer
                     return false;
                 }
             }
-            if (wantToRemoveF23Mapping)
+            if (wantToRemoveF23Mapping || (isBadKeyMapping && isAdmin))
             {
-                bool removed = KeyBindings.RemoveRemappedKey(KeyBindings.SCANCODE_F23);
-                if (!removed)
-                {
-                    MessageBox.Show("Failed to unmap F23 key", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+                CleanUpKeyRemappings();
             }
 
             string targetDirectory = "";
@@ -214,14 +298,15 @@ namespace NoCopilotKey_Installer
                 try
                 {
                     subkey.SetValue("DisplayName", "NoCopilotKey");
-                    subkey.SetValue("DisplayVersion", "1.0.4.0");
+                    string versionNumber = GetInstalledVersion().ToString();
+                    subkey.SetValue("DisplayVersion", versionNumber);
                     subkey.SetValue("Publisher", "www.dwedit.org");
                     subkey.SetValue("URLInfoAbout", "https://github.com/Dwedit/NoCopilotKey");
                     subkey.SetValue("UninstallString", "\"" + installerExePath + "\" --uninstall");
                 }
                 catch
                 {
-                    MessageBox.Show("Failed write uninstallation information to the registry", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Stop);
+                    MessageBox.Show("Failed to write uninstallation information to the registry", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Stop);
                 }
             }
 
@@ -231,9 +316,25 @@ namespace NoCopilotKey_Installer
             {
                 MessageBox.Show("Failed to stop other running instances.\r\nIf there is another instance running (such as a renamed EXE), end the process using Task Manager and try installing again.\r\nOtherwise, try restarting or logging off.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Stop);
             }
-            Process.Start(exePath, arguments);
+            if (needAdmin == isAdmin)
+            {
+                Process.Start(exePath, arguments);
+            }
+            else if (!needAdmin && isAdmin)
+            {
+                string runasExe = Path.Combine(Environment.SystemDirectory, "runas.exe");
+                string arguments2 = "/trustlevel:0x20000 \"" + exePath + "\" " + arguments;
+                if (File.Exists(runasExe))
+                {
+                    Process.Start(runasExe, arguments2);
+                }
+            }
 
-            if (!haveF23Mapping && doRegistryRemap)
+            if (isBadKeyMapping)
+            {
+                MessageBox.Show("Since there is a bad keyboard remapping in the registry, you must restart or log off before NoCopilotKey will work.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else if (!haveF23Mapping && doRegistryRemap)
             {
                 MessageBox.Show("Using the registry to remap the F23 Key will take effect once you restart or log off.\r\nUntil then, the program will remap the Copilot key by using only global keyboard hooks.", Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
@@ -655,6 +756,29 @@ namespace NoCopilotKey_Installer
                 return null;
             }
             return otherProcess;
+        }
+
+        public static int LaunchInstallerAndWait(string[] args = null, bool admin = false, Form form = null)
+        {
+            var process = LaunchInstaller2(args, admin);
+            if (process != null)
+            {
+                if (form != null)
+                {
+                    form.Enabled = false;
+                }
+                while (!process.WaitForExit(10))
+                {
+                    Application.DoEvents();
+                }
+                int exitCode = process.ExitCode;
+                if (form != null)
+                {
+                    form.Enabled = true;
+                }
+                return exitCode;
+            }
+            return -1;
         }
 
         public static void RestartAsAdmin(string[] args = null)

@@ -66,7 +66,7 @@ namespace NoCopilotKey_Installer
             this.groupBox1.Controls.Add(this.optProgramFiles);
             this.groupBox1.Location = new System.Drawing.Point(12, 12);
             this.groupBox1.Name = "groupBox1";
-            this.groupBox1.Size = new System.Drawing.Size(186, 67);
+            this.groupBox1.Size = new System.Drawing.Size(197, 67);
             this.groupBox1.TabIndex = 0;
             this.groupBox1.TabStop = false;
             this.groupBox1.Text = "Install Mode:";
@@ -93,7 +93,7 @@ namespace NoCopilotKey_Installer
             // 
             // uninstallButton
             // 
-            this.uninstallButton.Location = new System.Drawing.Point(42, 207);
+            this.uninstallButton.Location = new System.Drawing.Point(46, 207);
             this.uninstallButton.Name = "uninstallButton";
             this.uninstallButton.Size = new System.Drawing.Size(75, 23);
             this.uninstallButton.TabIndex = 5;
@@ -103,7 +103,7 @@ namespace NoCopilotKey_Installer
             // 
             // installButton
             // 
-            this.installButton.Location = new System.Drawing.Point(123, 207);
+            this.installButton.Location = new System.Drawing.Point(127, 207);
             this.installButton.Name = "installButton";
             this.installButton.Size = new System.Drawing.Size(75, 23);
             this.installButton.TabIndex = 6;
@@ -115,7 +115,7 @@ namespace NoCopilotKey_Installer
             // 
             this.label1.Location = new System.Drawing.Point(7, 147);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(195, 57);
+            this.label1.Size = new System.Drawing.Size(202, 57);
             this.label1.TabIndex = 4;
             this.label1.Text = "To support applications which run as Administrator, NoCopilotKey must be installe" +
     "d to run as Administrator.\r\n";
@@ -161,7 +161,7 @@ namespace NoCopilotKey_Installer
             this.AcceptButton = this.installButton;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(210, 241);
+            this.ClientSize = new System.Drawing.Size(214, 241);
             this.Controls.Add(this.lblKey);
             this.Controls.Add(this.selectKeyButton);
             this.Controls.Add(this.chkRemapViaRegistry);

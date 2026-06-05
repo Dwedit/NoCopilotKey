@@ -42,7 +42,8 @@ namespace NoCopilotKey_Installer
             {
                 var selectedItem = this.listBox1.SelectedItem as MyListItem;
                 if (selectedItem == null) return "";
-                return selectedItem.VKey;
+                string result = selectedItem.VKey;
+                return result;
             }
             set
             {
