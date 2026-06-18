@@ -1,12 +1,12 @@
 # NoCopilotKey
-A tiny program that changes the Copilot keyboard key back into the right Ctrl key.
+A tiny program that changes the Copilot keyboard key back into the right Ctrl key.  Unlike other solutions, this one does not interfere with the Left Shift or Left Windows keys.
 
-# Usage
+# Installation
 Download the release from the [Releases page](https://github.com/Dwedit/NoCopilotKey/releases/latest).
 
-Run "NoCopilotKey Installer.exe" to install the program and set it up to automatically run.  (Main EXE is also embedded in the installer)
+Run "NoCopilotKey Installer.exe" to install the program.  After the program is installed, it will start running now, and also automatically run on startup or login.
 
-To stop NoCopilotKey, use Task Manager to end the program.
+To stop NoCopilotKey, use Task Manager to end the program, or uninstall the program.
 
 # Why?
 Because Microsoft required manufacturers to replace the right Ctrl key with a Copilot key, with no BIOS or Windows setting available to change it back.
@@ -24,46 +24,73 @@ Some people actually do use their keyboards, and need a right Ctrl key.  Things 
 
 # How it works
 
-Pressing the Copilot key acts as pressing keys in this order: Left Windows Key, Left Shift, then F23 (a key not normally found on keyboards).
+## What exactly is the Copilot Key
 
-Releasing the Copilot key is a release of F23, Left Shift, then Left Windows Key in that order.
+The Copilot Key acts as Left Windows, Left Shift, then F23 in that order.  (The F23 key is not normally found on keyboards.)
 
-The function `SetWindowsHookEx` allows a program to install a low-level keyboard hook.  This allows a program to accept or reject key presses for the whole system.
+When the Copilot Key is released, F23 is released first, then Left Shift, then Left Windows.
 
-In addition to a keyboard hook accepting or rejecting key presses, the function `SendInput` can synthesize keys being pressed and released.
+## The features provided by Windows
+
+The function `SetWindowsHookEx` allows a program to install a global low-level keyboard hook.  Whenever a key is pressed (or released), every program with a global keyboard hook gets to see the keypress (or release), and the program will decide whether the key event should be blocked or allowed.  This API has been around since Windows 2000, and is normally used to create global hotkeys.
+
+The function `SendInput` allows a program to inject keyboard input into the system.  This same functionality is used by the Windows On-Screen Keyboard.
+
+By combining these features, we can create a key-remapping program that supports a key which presses multiple keys.
 
 ## Detecting the three-key sequence vs someone using the normal keys:
 
-The program uses simple rules to detect the Copilot key vs. normal use of the Left Windows and Left Shift keys.
+The copilot key quickly presses its three key sequence, but you could also be pressing the first two keys on your own keyboard.  You could also be pressing Left Shift while holding down Copilot, or pressing Copilot while holding down Left Shift.
 
-When you press Left Windows Key:
- * Left Windows Keystroke is blocked
- * If any of these happens, your keystroke to Left Windows key is replayed:
-   * Releasing any key
-   * Pressing any key that's not Left Shift
-   * 0.1 seconds elapses
+In order to distinguish between the real keyboard keys and the Copilot Key, we follow a sequence:
 
-If Left Shift becomes pressed after Left Windows Key:
- * Left Shift Keystroke is blocked
- * If any of these happens, your keystrokes to Left Windows Key and Left Shift are replayed:
-   * Releasing any key
-   * Pressing any key that's not F23
-   * 0.1 seconds elapses since Left Windows Key was pressed
+[ Idle ] → [ Left Windows Key ] → [ Left Shift ] → [ F23 ]
 
-If F23 becomes pressed after Left Windows and Left Shift:
- * Keystroke is blocked
- * Right Ctrl becomes pressed (via `SendInput`) unless Right Ctrl is already held down.
+We start at Idle.
 
-Because keystrokes to Left Windows and Left Shift are replayed very quickly, you won't even notice that they were blocked.
+Whenever we see a keypress for the correct key, we temporarily block the key, then advance to the next step.
 
-Then when you release the Copilot key:
- * Key release of F23 is blocked
- * Right Ctrl becomes released and no longer pressed (via `SendInput`)
- * After F23 key is released, the next key release of Left Shift is blocked (not your real Left Shift key)
- * After Left Shift key is released, the next key release of Left Windows Key is blocked (not your real Left Windows key)
- * After Left Windows key is released, it's done handling the complete keystroke.
+These will break the sequence:
+ * Other Key Press
+ * Any Key Release
+ * 0.1 second timer expires
+
+When we see any of those, we know it's not the Copilot Key, and we take these actions:
+ * Replay all temporarily blocked keys
+ * Ensure the incoming keypress happens after the keys are replayed
+ * Return to Idle
+ * If the pressed key was Left Windows Key, handle it immediately.
+
+Whenever we reach the Left Windows Key step, we start the 0.1 second timer.  This timer is cancelled whenever we return to idle.
+
+When we reach F23, we have completed the sequence.  We take these actions:
+ * Inject a Right Ctrl keypress.
+ * Temporarily blocked keys remain blocked
+ * Return to Idle
+ * Sequence for releasing keys advances to F23 step (see below)
+
+##Second sequence for releasing the Copilot Key
+
+There is also another sequence when releasing the Copilot Key, but once you release the F23 key, the other two keys follow immediately.  This makes the sequence more simple, since it can't be interrupted.
+
+[ Idle ] → [ F23 ] → [ Left Shift ] → [ Left Windows ] → [ Idle ]
+
+When F23 is pressed (from the other sequence), we are now waiting for F23 to be released.  A key release is only blocked if we're at the correct step, so you can still release Left Shift as normal while holding down Copilot key.
+
+ * F23 Released:
+   * Inject Right Ctrl release
+   * Block F23 release
+ * Left Shift released:
+   * Block left shift release
+ * Left Windows released:
+   * Block left windows release
 
 # Version History
+
+1.0.4.0
+ * You can pick a custom key instead of Right Ctrl.
+ * Option to remap F23 using the registry.
+ * Supports running on systems where the F23 key has been remapped.
 
 1.0.3.1
  * When running as non-admin, held ctrl key could get stuck if you switched to an admin window before releasing the key.  Now held ctrl is automatically unstuck the next time you switch back to a non-admin window.
