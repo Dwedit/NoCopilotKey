@@ -88,6 +88,7 @@ When F23 is pressed (from the other sequence), we are now waiting for F23 to be 
 # Version History
 
 1.0.4.0
+ * Includes scancode in injected keyboard actions.
  * You can pick a custom key instead of Right Ctrl.
  * Option to remap F23 using the registry.
  * Supports running on systems where the F23 key has been remapped.
