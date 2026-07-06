@@ -135,8 +135,13 @@
   <ItemGroup>
     <Folder Include="Resources\" />
   </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="..\x64\Release\NoCopilotKey.exe">
+  <ItemGroup Condition="'$(Platform)' == 'x64'">
+    <EmbeddedResource Include="..\Bin\Release\x64\NoCopilotKey.exe">
+      <Link>NoCopilotKey.exe</Link>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup Condition="'$(Platform)' == 'x86'">
+    <EmbeddedResource Include="..\Bin\Release\x86\NoCopilotKey.exe">
       <Link>NoCopilotKey.exe</Link>
     </EmbeddedResource>
   </ItemGroup>
