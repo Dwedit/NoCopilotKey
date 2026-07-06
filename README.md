@@ -69,7 +69,7 @@ When we reach F23, we have completed the sequence.  We take these actions:
  * Return to Idle
  * Sequence for releasing keys advances to F23 step (see below)
 
-##Second sequence for releasing the Copilot Key
+## Second sequence for releasing the Copilot Key
 
 There is also another sequence when releasing the Copilot Key, but once you release the F23 key, the other two keys follow immediately.  This makes the sequence more simple, since it can't be interrupted.
 
